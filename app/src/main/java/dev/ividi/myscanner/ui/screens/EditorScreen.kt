@@ -16,10 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -68,7 +68,7 @@ fun EditorScreen(
                 title = { Text(stringResource(R.string.editor_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -110,7 +110,7 @@ fun EditorScreen(
                     onClick = onRotate,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.RotateRight, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = null)
                     Text(" " + stringResource(R.string.editor_rotate))
                 }
                 Button(
