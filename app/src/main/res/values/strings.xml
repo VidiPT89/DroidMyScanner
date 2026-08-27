@@ -30,12 +30,40 @@
     <string name="document_delete">Delete</string>
     <string name="document_delete_confirm_title">Delete document?</string>
     <string name="document_delete_confirm_body">This action cannot be undone.</string>
+    <string name="document_move_to_folder">Move to folder</string>
     <string name="cancel">Cancel</string>
     <string name="confirm">Confirm</string>
     <string name="save">Save</string>
     <string name="rename_document_title">Rename document</string>
     <string name="document_name_label">Document name</string>
     <string name="new_document_default_name">Document %1$s</string>
+    <string name="home_search_hint">Search by name or tag</string>
+
+    <!-- Folders -->
+    <string name="folder_all_documents">All Documents</string>
+    <string name="folder_new">New folder</string>
+    <string name="folder_create_title">New folder</string>
+    <string name="folder_rename_title">Rename folder</string>
+    <string name="folder_name_label">Folder name</string>
+    <string name="folder_manage_hint">Manage this folder.</string>
+    <string name="folder_delete_confirm_title">Delete folder?</string>
+    <string name="folder_delete_confirm_body">Documents in this folder will move back to All Documents. They will not be deleted.</string>
+
+    <!-- Tags -->
+    <string name="tag_add">Add tag</string>
+    <string name="tag_label">Tag</string>
+    <string name="tag_remove">Remove tag</string>
+
+    <!-- Scan fallback -->
+    <string name="scan_fallback_message">The document scanner is unavailable. Pick photos from your gallery instead.</string>
+
+    <!-- Add document source menu -->
+    <string name="add_document_menu_title">Add document</string>
+    <string name="add_document_scan_camera">Scan with Camera</string>
+    <string name="add_document_choose_photos">Choose Photos</string>
+    <string name="add_document_browse_files">Browse Files</string>
+    <string name="imported_file_badge">Imported File</string>
+    <string name="imported_file_open_error">No app found to open this file.</string>
 
     <!-- Editor -->
     <string name="editor_title">Edit page</string>
@@ -55,6 +83,8 @@
     <string name="viewer_extract_text">Extract text</string>
     <string name="viewer_export_pdf">Export as PDF</string>
     <string name="viewer_export_images">Export as images</string>
+    <string name="viewer_export_word">Export as Word</string>
+    <string name="viewer_export_menu">Export</string>
     <string name="viewer_share">Share</string>
     <string name="viewer_add_page">Add page</string>
     <string name="extracted_text_title">Extracted text</string>

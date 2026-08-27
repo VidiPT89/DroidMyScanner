@@ -30,12 +30,40 @@
     <string name="document_delete">Eliminar</string>
     <string name="document_delete_confirm_title">Eliminar documento?</string>
     <string name="document_delete_confirm_body">Esta ação não pode ser desfeita.</string>
+    <string name="document_move_to_folder">Mover para pasta</string>
     <string name="cancel">Cancelar</string>
     <string name="confirm">Confirmar</string>
     <string name="save">Guardar</string>
     <string name="rename_document_title">Mudar nome do documento</string>
     <string name="document_name_label">Nome do documento</string>
     <string name="new_document_default_name">Documento %1$s</string>
+    <string name="home_search_hint">Pesquisar por nome ou etiqueta</string>
+
+    <!-- Pastas -->
+    <string name="folder_all_documents">Todos os Documentos</string>
+    <string name="folder_new">Nova pasta</string>
+    <string name="folder_create_title">Nova pasta</string>
+    <string name="folder_rename_title">Mudar nome da pasta</string>
+    <string name="folder_name_label">Nome da pasta</string>
+    <string name="folder_manage_hint">Gerir esta pasta.</string>
+    <string name="folder_delete_confirm_title">Eliminar pasta?</string>
+    <string name="folder_delete_confirm_body">Os documentos desta pasta voltam para Todos os Documentos. Não serão eliminados.</string>
+
+    <!-- Etiquetas -->
+    <string name="tag_add">Adicionar etiqueta</string>
+    <string name="tag_label">Etiqueta</string>
+    <string name="tag_remove">Remover etiqueta</string>
+
+    <!-- Alternativa de digitalização -->
+    <string name="scan_fallback_message">O digitalizador de documentos não está disponível. Escolha fotografias da sua galeria.</string>
+
+    <!-- Menu de origem do documento -->
+    <string name="add_document_menu_title">Adicionar documento</string>
+    <string name="add_document_scan_camera">Digitalizar com a câmara</string>
+    <string name="add_document_choose_photos">Escolher fotografias</string>
+    <string name="add_document_browse_files">Procurar ficheiros</string>
+    <string name="imported_file_badge">Ficheiro importado</string>
+    <string name="imported_file_open_error">Nenhuma aplicação encontrada para abrir este ficheiro.</string>
 
     <!-- Editor -->
     <string name="editor_title">Editar página</string>
@@ -55,6 +83,8 @@
     <string name="viewer_extract_text">Extrair texto</string>
     <string name="viewer_export_pdf">Exportar como PDF</string>
     <string name="viewer_export_images">Exportar como imagens</string>
+    <string name="viewer_export_word">Exportar como Word</string>
+    <string name="viewer_export_menu">Exportar</string>
     <string name="viewer_share">Partilhar</string>
     <string name="viewer_add_page">Adicionar página</string>
     <string name="extracted_text_title">Texto extraído</string>

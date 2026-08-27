@@ -2,4 +2,5 @@
 <paths>
     <files-path name="exported_docs" path="exports/" />
     <cache-path name="cached_scans" path="scans/" />
+    <files-path name="imported_files" path="imports/" />
 </paths>

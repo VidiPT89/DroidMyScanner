@@ -28,16 +28,44 @@ data class ScanPage(
 )
 
 /**
+ * Distinguishes documents made up of editable scanned pages from documents that are just
+ * a copy of an arbitrary file (e.g. a Word document) picked via "Browse Files", which has
+ * no in-app editing pipeline and is opened externally instead. Defaults to [Scanned] so
+ * documents saved before this field existed still deserialize correctly.
+ */
+sealed class DocumentKind {
+    object Scanned : DocumentKind()
+    data class ImportedFile(val originalFileName: String) : DocumentKind()
+}
+
+/**
  * A saved multi-page document made up of [pages] in display order.
+ * [folderId] points at a [DocumentFolder]; null means "All Documents".
+ * [tags] are free-text labels the user can attach for filtering.
+ * [documentKind] distinguishes normal scanned/imported-image documents from an
+ * [DocumentKind.ImportedFile], whose actual bytes live at [importedFilePath].
  */
 data class ScanDocument(
     val id: String,
     val name: String,
     val createdAtMillis: Long,
-    val pages: List<ScanPage> = emptyList()
+    val pages: List<ScanPage> = emptyList(),
+    val folderId: String? = null,
+    val tags: List<String> = emptyList(),
+    val documentKind: DocumentKind = DocumentKind.Scanned,
+    val importedFilePath: String? = null
 ) {
     val pageCount: Int get() = pages.size
 }
+
+/**
+ * A user-created grouping for documents. Deleting a folder does not delete its
+ * documents; they simply revert to having no folder ("All Documents").
+ */
+data class DocumentFolder(
+    val id: String,
+    val name: String
+)
 
 enum class AppThemeMode {
     DARK,

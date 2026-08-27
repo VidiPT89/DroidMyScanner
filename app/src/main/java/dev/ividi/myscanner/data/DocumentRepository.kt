@@ -21,23 +21,45 @@ class DocumentRepository(private val context: Context) {
     private val scansDir: File by lazy {
         File(context.filesDir, "scans").apply { mkdirs() }
     }
+    private val importsDir: File by lazy {
+        File(context.filesDir, "imports").apply { mkdirs() }
+    }
     private val indexFile: File by lazy {
         File(context.filesDir, "documents_index.json")
+    }
+    private val foldersFile: File by lazy {
+        File(context.filesDir, "folders_index.json")
     }
 
     private val _documents = MutableStateFlow<List<ScanDocument>>(emptyList())
     val documents: StateFlow<List<ScanDocument>> = _documents.asStateFlow()
 
+    private val _folders = MutableStateFlow<List<DocumentFolder>>(emptyList())
+    val folders: StateFlow<List<DocumentFolder>> = _folders.asStateFlow()
+
     suspend fun load() = withContext(Dispatchers.IO) {
-        if (!indexFile.exists()) {
-            _documents.value = emptyList()
-            return@withContext
+        val docs = if (indexFile.exists()) {
+            runCatching {
+                val json = JSONArray(indexFile.readText())
+                (0 until json.length()).map { i -> json.getJSONObject(i).toDocument() }
+            }.getOrDefault(emptyList())
+        } else {
+            emptyList()
         }
-        val docs = runCatching {
-            val json = JSONArray(indexFile.readText())
-            (0 until json.length()).map { i -> json.getJSONObject(i).toDocument() }
-        }.getOrDefault(emptyList())
         _documents.value = docs.sortedByDescending { it.createdAtMillis }
+
+        val folders = if (foldersFile.exists()) {
+            runCatching {
+                val json = JSONArray(foldersFile.readText())
+                (0 until json.length()).map { i ->
+                    val obj = json.getJSONObject(i)
+                    DocumentFolder(id = obj.getString("id"), name = obj.getString("name"))
+                }
+            }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        _folders.value = folders
     }
 
     fun directoryFor(documentId: String): File =
@@ -45,6 +67,10 @@ class DocumentRepository(private val context: Context) {
 
     fun newPageFile(documentId: String, extension: String = "jpg"): File =
         File(directoryFor(documentId), "${UUID.randomUUID()}.$extension")
+
+    /** Allocates a destination file for a copied "imported file" document, preserving [fileName]. */
+    fun newImportedFile(fileName: String): File =
+        File(importsDir, "${UUID.randomUUID()}_$fileName")
 
     suspend fun upsertDocument(document: ScanDocument) = withContext(Dispatchers.IO) {
         val current = _documents.value.toMutableList()
@@ -68,10 +94,42 @@ class DocumentRepository(private val context: Context) {
     fun getDocument(documentId: String): ScanDocument? =
         _documents.value.find { it.id == documentId }
 
+    suspend fun addFolder(name: String): DocumentFolder = withContext(Dispatchers.IO) {
+        val folder = DocumentFolder(id = UUID.randomUUID().toString(), name = name)
+        _folders.value = _folders.value + folder
+        persistFolders()
+        folder
+    }
+
+    suspend fun renameFolder(folderId: String, newName: String) = withContext(Dispatchers.IO) {
+        _folders.value = _folders.value.map { if (it.id == folderId) it.copy(name = newName) else it }
+        persistFolders()
+    }
+
+    suspend fun deleteFolder(folderId: String) = withContext(Dispatchers.IO) {
+        _folders.value = _folders.value.filterNot { it.id == folderId }
+        _documents.value = _documents.value.map {
+            if (it.folderId == folderId) it.copy(folderId = null) else it
+        }
+        persistFolders()
+        persist()
+    }
+
     private suspend fun persist() = withContext(Dispatchers.IO) {
         val array = JSONArray()
         _documents.value.forEach { array.put(it.toJson()) }
         indexFile.writeText(array.toString())
+    }
+
+    private suspend fun persistFolders() = withContext(Dispatchers.IO) {
+        val array = JSONArray()
+        _folders.value.forEach { folder ->
+            array.put(JSONObject().apply {
+                put("id", folder.id)
+                put("name", folder.name)
+            })
+        }
+        foldersFile.writeText(array.toString())
     }
 
     private fun ScanDocument.toJson(): JSONObject = JSONObject().apply {
@@ -81,6 +139,18 @@ class DocumentRepository(private val context: Context) {
         val pagesArray = JSONArray()
         pages.forEach { pagesArray.put(it.toJson()) }
         put("pages", pagesArray)
+        put("folderId", folderId ?: JSONObject.NULL)
+        val tagsArray = JSONArray()
+        tags.forEach { tagsArray.put(it) }
+        put("tags", tagsArray)
+        when (val kind = documentKind) {
+            is DocumentKind.Scanned -> put("documentKind", "scanned")
+            is DocumentKind.ImportedFile -> {
+                put("documentKind", "imported_file")
+                put("importedFileName", kind.originalFileName)
+            }
+        }
+        put("importedFilePath", importedFilePath ?: JSONObject.NULL)
     }
 
     private fun ScanPage.toJson(): JSONObject = JSONObject().apply {
@@ -98,11 +168,29 @@ class DocumentRepository(private val context: Context) {
     private fun JSONObject.toDocument(): ScanDocument {
         val pagesJson = getJSONArray("pages")
         val pages = (0 until pagesJson.length()).map { i -> pagesJson.getJSONObject(i).toPage() }
+        val tags = if (has("tags")) {
+            val tagsJson = getJSONArray("tags")
+            (0 until tagsJson.length()).map { i -> tagsJson.getString(i) }
+        } else {
+            emptyList()
+        }
+        val documentKind = when (optString("documentKind", "scanned")) {
+            "imported_file" -> DocumentKind.ImportedFile(optString("importedFileName", ""))
+            else -> DocumentKind.Scanned
+        }
         return ScanDocument(
             id = getString("id"),
             name = getString("name"),
             createdAtMillis = getLong("createdAtMillis"),
-            pages = pages
+            pages = pages,
+            folderId = if (isNull("folderId")) null else optString("folderId", null),
+            tags = tags,
+            documentKind = documentKind,
+            importedFilePath = if (has("importedFilePath") && !isNull("importedFilePath")) {
+                optString("importedFilePath", null)
+            } else {
+                null
+            }
         )
     }
 

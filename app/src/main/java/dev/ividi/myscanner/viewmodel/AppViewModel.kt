@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.ividi.myscanner.data.AppLanguage
 import dev.ividi.myscanner.data.AppThemeMode
+import dev.ividi.myscanner.data.DocumentFolder
+import dev.ividi.myscanner.data.DocumentKind
 import dev.ividi.myscanner.data.DocumentRepository
 import dev.ividi.myscanner.data.LocaleManager
 import dev.ividi.myscanner.data.PageFilter
@@ -16,6 +18,8 @@ import dev.ividi.myscanner.scanner.TextRecognizerClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -31,6 +35,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val textRecognizer = TextRecognizerClient()
 
     val documents: StateFlow<List<ScanDocument>> = repository.documents
+
+    val folders: StateFlow<List<DocumentFolder>> = repository.folders
+
+    /** Null means "All Documents"; otherwise the id of the folder currently filtered on. */
+    private val _selectedFolderId = MutableStateFlow<String?>(null)
+    val selectedFolderId: StateFlow<String?> = _selectedFolderId
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    /** Documents narrowed by the current folder selection and search query. */
+    val filteredDocuments: StateFlow<List<ScanDocument>> = combine(
+        repository.documents, _selectedFolderId, _searchQuery
+    ) { docs, folderId, query ->
+        val byFolder = if (folderId == null) docs else docs.filter { it.folderId == folderId }
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isEmpty()) {
+            byFolder
+        } else {
+            byFolder.filter { doc ->
+                doc.name.contains(trimmedQuery, ignoreCase = true) ||
+                    doc.tags.any { it.contains(trimmedQuery, ignoreCase = true) }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val themeMode: StateFlow<AppThemeMode> = preferences.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppThemeMode.DARK)
@@ -80,7 +109,82 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return docId
     }
 
+    /** Creates a new document from freshly rendered PDF page image paths (already local files). */
+    fun createDocumentFromPages(name: String, pagePaths: List<String>): String {
+        val docId = UUID.randomUUID().toString()
+        val pages = pagePaths.map { path ->
+            ScanPage(id = UUID.randomUUID().toString(), originalPath = path, editedPath = path)
+        }
+        val document = ScanDocument(
+            id = docId,
+            name = name,
+            createdAtMillis = System.currentTimeMillis(),
+            pages = pages
+        )
+        viewModelScope.launch { repository.upsertDocument(document) }
+        return docId
+    }
+
+    /** Creates an "imported file" document entry for a non-image, non-PDF file copied as-is. */
+    fun createImportedFileDocument(originalFileName: String, storedFilePath: String): String {
+        val docId = UUID.randomUUID().toString()
+        val document = ScanDocument(
+            id = docId,
+            name = originalFileName.substringBeforeLast('.').ifBlank { originalFileName },
+            createdAtMillis = System.currentTimeMillis(),
+            documentKind = DocumentKind.ImportedFile(originalFileName),
+            importedFilePath = storedFilePath
+        )
+        viewModelScope.launch { repository.upsertDocument(document) }
+        return docId
+    }
+
+    fun newImportedFile(fileName: String): File = repository.newImportedFile(fileName)
+
     fun getDocument(id: String): ScanDocument? = repository.getDocument(id)
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun selectFolder(folderId: String?) {
+        _selectedFolderId.value = folderId
+    }
+
+    fun createFolder(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { repository.addFolder(name.trim()) }
+    }
+
+    fun renameFolder(folderId: String, newName: String) {
+        if (newName.isBlank()) return
+        viewModelScope.launch { repository.renameFolder(folderId, newName.trim()) }
+    }
+
+    fun deleteFolder(folderId: String) {
+        viewModelScope.launch {
+            repository.deleteFolder(folderId)
+            if (_selectedFolderId.value == folderId) _selectedFolderId.value = null
+        }
+    }
+
+    fun setDocumentFolder(documentId: String, folderId: String?) {
+        val doc = repository.getDocument(documentId) ?: return
+        viewModelScope.launch { repository.upsertDocument(doc.copy(folderId = folderId)) }
+    }
+
+    fun addTag(documentId: String, tag: String) {
+        val trimmed = tag.trim()
+        if (trimmed.isEmpty()) return
+        val doc = repository.getDocument(documentId) ?: return
+        if (doc.tags.any { it.equals(trimmed, ignoreCase = true) }) return
+        viewModelScope.launch { repository.upsertDocument(doc.copy(tags = doc.tags + trimmed)) }
+    }
+
+    fun removeTag(documentId: String, tag: String) {
+        val doc = repository.getDocument(documentId) ?: return
+        viewModelScope.launch { repository.upsertDocument(doc.copy(tags = doc.tags - tag)) }
+    }
 
     fun renameDocument(id: String, newName: String) {
         viewModelScope.launch { repository.renameDocument(id, newName) }
@@ -158,6 +262,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearExtractedText() {
         _extractedText.value = null
+    }
+
+    /**
+     * Returns true the first time the camera-scanner fallback (gallery picker) triggers,
+     * so the caller can show an explanatory message exactly once, then remembers it fired.
+     */
+    suspend fun consumeScanFallbackNotice(): Boolean {
+        val alreadyShown = preferences.scanFallbackShown.first()
+        if (!alreadyShown) preferences.setScanFallbackShown(true)
+        return !alreadyShown
     }
 
     fun documentDirectory(documentId: String): File = repository.directoryFor(documentId)

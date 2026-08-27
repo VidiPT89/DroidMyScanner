@@ -24,14 +24,27 @@ class DocumentScannerClient(private val activity: Activity) {
         .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
         .build()
 
-    private val scanner = GmsDocumentScanning.getClient(options)
-
+    /**
+     * Starts the ML Kit scanner flow. Play services document scanning generally works on
+     * emulators with Google Play, but it can be entirely unavailable (no Play Services,
+     * outdated module, or any other startup failure) -- in that case [onError] is invoked
+     * so the caller can fall back to picking existing photos from the gallery instead.
+     */
     fun start(launcher: ActivityResultLauncher<IntentSenderRequest>, onError: (Exception) -> Unit) {
-        scanner.getStartScanIntent(activity)
-            .addOnSuccessListener { intentSender ->
-                launcher.launch(IntentSenderRequest.Builder(intentSender).build())
-            }
-            .addOnFailureListener(onError)
+        try {
+            val scanner = GmsDocumentScanning.getClient(options)
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    try {
+                        launcher.launch(IntentSenderRequest.Builder(intentSender).build())
+                    } catch (e: Exception) {
+                        onError(e)
+                    }
+                }
+                .addOnFailureListener(onError)
+        } catch (e: Exception) {
+            onError(e)
+        }
     }
 
     companion object {

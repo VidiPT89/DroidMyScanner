@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,12 +12,12 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -29,6 +28,8 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import dev.ividi.myscanner.data.AppLanguage
 import dev.ividi.myscanner.data.AppThemeMode
 import dev.ividi.myscanner.data.LocaleManager
+import dev.ividi.myscanner.data.DocumentKind
+import dev.ividi.myscanner.pdf.DocxExporter
 import dev.ividi.myscanner.pdf.ImageExporter
 import dev.ividi.myscanner.pdf.PdfExporter
 import dev.ividi.myscanner.scanner.DocumentScannerClient
@@ -75,7 +76,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun <T> kotlinx.coroutines.flow.StateFlow<T>.collectAsStateSafe(initial: T) =
-    androidx.compose.runtime.collectAsState()
+    this.collectAsState()
 
 @Composable
 private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
@@ -99,6 +100,22 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
 
     val scannerClient = remember { DocumentScannerClient(activity) }
     var pendingDocumentTarget by remember { mutableStateOf<String?>(null) }
+    var fallbackMessage by remember { mutableStateOf<String?>(null) }
+
+    suspend fun importPickedPages(uris: List<String>, targetDoc: String?) {
+        val localPaths = uris.map { uriString ->
+            copyUriToLocalFile(activity, Uri.parse(uriString), viewModel, targetDoc)
+        }.filterNotNull()
+        if (localPaths.isEmpty()) return
+
+        if (targetDoc != null) {
+            viewModel.addPagesToDocument(targetDoc, localPaths)
+            navController.navigate(Routes.viewer(targetDoc))
+        } else {
+            val newDocId = viewModel.createDocumentFromScan(localPaths)
+            navController.navigate(Routes.viewer(newDocId))
+        }
+    }
 
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
@@ -107,24 +124,108 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
 
         val targetDoc = pendingDocumentTarget
         scope.launch {
-            val localPaths = uris.map { uriString ->
-                copyUriToLocalFile(activity, Uri.parse(uriString), viewModel, targetDoc)
-            }.filterNotNull()
-
-            if (targetDoc != null) {
-                viewModel.addPagesToDocument(targetDoc, localPaths)
-                navController.navigate(Routes.viewer(targetDoc))
-            } else {
-                val newDocId = viewModel.createDocumentFromScan(localPaths)
-                navController.navigate(Routes.viewer(newDocId))
-            }
+            importPickedPages(uris, targetDoc)
             pendingDocumentTarget = null
+        }
+    }
+
+    // Fallback used when the camera-based ML Kit scanner cannot start at all (e.g. missing
+    // or outdated Google Play services, or any other startup failure) -- lets the user pick
+    // existing photos from the gallery to use as scanned pages instead.
+    val galleryFallbackLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        val targetDoc = pendingDocumentTarget
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                importPickedPages(uris.map { it.toString() }, targetDoc)
+                pendingDocumentTarget = null
+            }
+        } else {
+            pendingDocumentTarget = null
+        }
+    }
+
+    fun launchGalleryFallback() {
+        scope.launch {
+            if (viewModel.consumeScanFallbackNotice()) {
+                fallbackMessage = activity.getString(R.string.scan_fallback_message)
+            }
+            galleryFallbackLauncher.launch(
+                androidx.activity.result.PickVisualMediaRequest(
+                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                )
+            )
         }
     }
 
     fun launchScanner(existingDocId: String?) {
         pendingDocumentTarget = existingDocId
-        scannerClient.start(scanLauncher) { /* scanner failed to start; silently ignore */ }
+        scannerClient.start(scanLauncher) { launchGalleryFallback() }
+    }
+
+    // "Choose Photos" from the Add Document menu: a first-class gallery picker, independent
+    // of the camera-scanner fallback above (always creates a brand-new document).
+    val choosePhotosLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch { importPickedPages(uris.map { it.toString() }, null) }
+        }
+    }
+
+    fun launchChoosePhotos() {
+        choosePhotosLauncher.launch(
+            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        )
+    }
+
+    // "Browse Files" from the Add Document menu: SAF picker supporting images, PDFs and Word
+    // documents at once. Each picked file's bytes are copied into app storage immediately
+    // rather than relying on persistable URI permissions.
+    val browseFilesLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch { importBrowsedFiles(activity, uris, viewModel, navController) }
+        }
+    }
+
+    fun launchBrowseFiles() {
+        browseFilesLauncher.launch(
+            arrayOf(
+                "image/*",
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        )
+    }
+
+    fun openOrViewDocument(docId: String) {
+        val doc = viewModel.getDocument(docId)
+        val kind = doc?.documentKind
+        val importedPath = doc?.importedFilePath
+        if (kind is DocumentKind.ImportedFile && importedPath != null) {
+            openImportedFile(activity, importedPath, kind.originalFileName)
+        } else {
+            navController.navigate(Routes.viewer(docId))
+        }
+    }
+
+    fun shareImportedFileDocument(docId: String) {
+        val doc = viewModel.getDocument(docId) ?: return
+        val kind = doc.documentKind
+        val path = doc.importedFilePath ?: return
+        if (kind !is DocumentKind.ImportedFile) return
+        shareFile(activity, java.io.File(path), mimeTypeForFileName(kind.originalFileName))
+    }
+
+    androidx.compose.runtime.LaunchedEffect(fallbackMessage) {
+        fallbackMessage?.let { message ->
+            android.widget.Toast.makeText(activity, message, android.widget.Toast.LENGTH_LONG).show()
+            fallbackMessage = null
+        }
     }
 
     NavHost(navController = navController, startDestination = if (onboardingDone) Routes.HOME else Routes.ONBOARDING) {
@@ -145,12 +246,28 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
                     onOpenSettings = { openAppSettings(activity) }
                 )
             } else {
+                val filteredDocuments by viewModel.filteredDocuments.collectAsStateSafe(emptyList())
+                val folders by viewModel.folders.collectAsStateSafe(emptyList())
+                val selectedFolderId by viewModel.selectedFolderId.collectAsStateSafe(null)
+                val searchQuery by viewModel.searchQuery.collectAsStateSafe("")
                 HomeScreen(
-                    documents = documents,
+                    documents = filteredDocuments,
+                    folders = folders,
+                    selectedFolderId = selectedFolderId,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                    onSelectFolder = { viewModel.selectFolder(it) },
+                    onCreateFolder = { name -> viewModel.createFolder(name) },
+                    onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
+                    onDeleteFolder = { id -> viewModel.deleteFolder(id) },
+                    onAssignFolder = { docId, folderId -> viewModel.setDocumentFolder(docId, folderId) },
                     onScanClick = { launchScanner(null) },
-                    onOpenDocument = { docId -> navController.navigate(Routes.viewer(docId)) },
+                    onChoosePhotosClick = { launchChoosePhotos() },
+                    onBrowseFilesClick = { launchBrowseFiles() },
+                    onOpenDocument = { docId -> openOrViewDocument(docId) },
                     onRenameDocument = { docId, name -> viewModel.renameDocument(docId, name) },
                     onDeleteDocument = { docId -> viewModel.deleteDocument(docId) },
+                    onShareImportedFile = { docId -> shareImportedFileDocument(docId) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) }
                 )
             }
@@ -189,6 +306,18 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
                             shareFiles(activity, files, "image/jpeg")
                         }
                     },
+                    onExportWord = {
+                        scope.launch {
+                            isBusy = true
+                            val file = DocxExporter.export(activity, document)
+                            isBusy = false
+                            shareFile(
+                                activity,
+                                file,
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
+                        }
+                    },
                     onShare = {
                         scope.launch {
                             isBusy = true
@@ -196,7 +325,9 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
                             isBusy = false
                             shareFile(activity, file, "application/pdf")
                         }
-                    }
+                    },
+                    onAddTag = { tag -> viewModel.addTag(docId, tag) },
+                    onRemoveTag = { tag -> viewModel.removeTag(docId, tag) }
                 )
             }
         }
@@ -251,50 +382,5 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
     }
 }
 
-private suspend fun copyUriToLocalFile(
-    activity: ComponentActivity,
-    uri: Uri,
-    viewModel: AppViewModel,
-    targetDocId: String?
-): String? {
-    val tempId = targetDocId ?: "inbox"
-    val destFile = viewModel.newPageFile(tempId)
-    return runCatching {
-        activity.contentResolver.openInputStream(uri)?.use { input ->
-            destFile.outputStream().use { output -> input.copyTo(output) }
-        }
-        destFile.absolutePath
-    }.getOrNull()
-}
-
-private fun shareFile(activity: ComponentActivity, file: java.io.File, mimeType: String) {
-    val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = mimeType
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    activity.startActivity(Intent.createChooser(intent, null))
-}
-
-private fun shareFiles(activity: ComponentActivity, files: List<java.io.File>, mimeType: String) {
-    if (files.isEmpty()) return
-    val uris = ArrayList(files.map { FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", it) })
-    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-        type = mimeType
-        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    activity.startActivity(Intent.createChooser(intent, null))
-}
-
-private fun openUrl(activity: ComponentActivity, url: String) {
-    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-}
-
-private fun openAppSettings(activity: ComponentActivity) {
-    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-        data = Uri.fromParts("package", activity.packageName, null)
-    }
-    activity.startActivity(intent)
-}
+// File-import/export helpers (SAF display-name lookup, MIME sniffing, sharing, opening
+// imported files externally) live in DocumentImportUtils.kt, same package.

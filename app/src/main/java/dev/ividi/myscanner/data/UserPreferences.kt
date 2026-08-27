@@ -19,6 +19,7 @@ class UserPreferences(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val SCAN_FALLBACK_SHOWN = booleanPreferencesKey("scan_fallback_shown")
     }
 
     val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { prefs ->
@@ -45,5 +46,13 @@ class UserPreferences(private val context: Context) {
 
     suspend fun setOnboardingDone(done: Boolean) {
         context.dataStore.edit { it[Keys.ONBOARDING_DONE] = done }
+    }
+
+    val scanFallbackShown: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SCAN_FALLBACK_SHOWN] ?: false
+    }
+
+    suspend fun setScanFallbackShown(shown: Boolean) {
+        context.dataStore.edit { it[Keys.SCAN_FALLBACK_SHOWN] = shown }
     }
 }
