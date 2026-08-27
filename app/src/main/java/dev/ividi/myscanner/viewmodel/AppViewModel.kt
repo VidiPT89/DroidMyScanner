@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -218,16 +220,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun cropPage(documentId: String, pageId: String, left: Float, top: Float, right: Float, bottom: Float) {
         val doc = repository.getDocument(documentId) ?: return
         val page = doc.pages.find { it.id == pageId } ?: return
-        val original = ImageProcessor.loadBitmap(page.originalPath) ?: return
-        val cropped = ImageProcessor.crop(original, left, top, right, bottom)
-        val outFile = repository.newPageFile(documentId)
-        ImageProcessor.saveTo(cropped, outFile)
-        updatePage(documentId, pageId) {
-            it.copy(
-                editedPath = outFile.absolutePath,
-                cropLeft = left, cropTop = top, cropRight = right, cropBottom = bottom,
-                rotationDegrees = 0
-            )
+        viewModelScope.launch {
+            val outFile = withContext(Dispatchers.Default) {
+                val original = ImageProcessor.loadBitmap(page.originalPath) ?: return@withContext null
+                val cropped = ImageProcessor.crop(original, left, top, right, bottom)
+                val file = repository.newPageFile(documentId)
+                ImageProcessor.saveTo(cropped, file)
+                file
+            } ?: return@launch
+            updatePage(documentId, pageId) {
+                it.copy(
+                    editedPath = outFile.absolutePath,
+                    cropLeft = left, cropTop = top, cropRight = right, cropBottom = bottom,
+                    rotationDegrees = 0
+                )
+            }
         }
     }
 

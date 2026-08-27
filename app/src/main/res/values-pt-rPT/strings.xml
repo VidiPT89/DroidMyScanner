@@ -74,6 +74,8 @@
     <string name="editor_delete_page">Eliminar página</string>
     <string name="editor_done">Concluído</string>
     <string name="editor_reset_crop">Repor</string>
+    <string name="editor_auto_crop">Deteção automática</string>
+    <string name="editor_crop_grid_hint">Arraste os cantos para ajustar o recorte</string>
     <string name="filter_original">Original</string>
     <string name="filter_bw">Preto e branco</string>
     <string name="filter_grayscale">Tons de cinzento</string>

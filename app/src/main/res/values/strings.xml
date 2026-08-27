@@ -74,6 +74,8 @@
     <string name="editor_delete_page">Delete page</string>
     <string name="editor_done">Done</string>
     <string name="editor_reset_crop">Reset</string>
+    <string name="editor_auto_crop">Auto-detect</string>
+    <string name="editor_crop_grid_hint">Drag corners to adjust the crop</string>
     <string name="filter_original">Original</string>
     <string name="filter_bw">Black &amp; white</string>
     <string name="filter_grayscale">Grayscale</string>
