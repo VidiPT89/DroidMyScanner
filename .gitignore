@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+*.apk
+*.aab
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.navigation/
+captures/
+local.properties
+
+# Keystores
+*.jks
+*.keystore
+
+# macOS
+.DS_Store

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyScanner</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title_1">Digitalize tudo</string>
+    <string name="onboarding_body_1">Transforme documentos em papel em digitalizações nítidas em segundos, com deteção automática dos contornos.</string>
+    <string name="onboarding_title_2">Aperfeiçoe cada página</string>
+    <string name="onboarding_body_2">Recorte, rode e reordene páginas, e aplique filtros para que fiquem impecáveis.</string>
+    <string name="onboarding_title_3">Exporte e partilhe</string>
+    <string name="onboarding_body_3">Guarde em PDF ou imagens e partilhe de imediato, tudo processado no seu dispositivo.</string>
+    <string name="onboarding_skip">Saltar</string>
+    <string name="onboarding_next">Seguinte</string>
+    <string name="onboarding_get_started">Começar</string>
+
+    <!-- Permissions -->
+    <string name="permission_camera_rationale_title">Acesso à câmara necessário</string>
+    <string name="permission_camera_rationale_body">O MyScanner precisa de aceder à câmara para digitalizar documentos. Nada é enviado para a Internet; todo o processamento é feito no seu dispositivo.</string>
+    <string name="permission_grant">Conceder permissão</string>
+    <string name="permission_denied_message">É necessária a permissão da câmara para digitalizar documentos. Pode ativá-la nas definições do sistema.</string>
+    <string name="permission_open_settings">Abrir definições</string>
+
+    <!-- Home / documents -->
+    <string name="home_title">Os meus documentos</string>
+    <string name="home_empty_title">Ainda não há documentos</string>
+    <string name="home_empty_body">Toque no botão de digitalizar para criar o seu primeiro documento.</string>
+    <string name="home_scan_fab">Digitalizar</string>
+    <string name="document_pages_count">%1$d páginas</string>
+    <string name="document_rename">Mudar nome</string>
+    <string name="document_delete">Eliminar</string>
+    <string name="document_delete_confirm_title">Eliminar documento?</string>
+    <string name="document_delete_confirm_body">Esta ação não pode ser desfeita.</string>
+    <string name="cancel">Cancelar</string>
+    <string name="confirm">Confirmar</string>
+    <string name="save">Guardar</string>
+    <string name="rename_document_title">Mudar nome do documento</string>
+    <string name="document_name_label">Nome do documento</string>
+    <string name="new_document_default_name">Documento %1$s</string>
+
+    <!-- Editor -->
+    <string name="editor_title">Editar página</string>
+    <string name="editor_crop">Recortar</string>
+    <string name="editor_rotate">Rodar</string>
+    <string name="editor_filter">Filtro</string>
+    <string name="editor_reorder">Reordenar páginas</string>
+    <string name="editor_delete_page">Eliminar página</string>
+    <string name="editor_done">Concluído</string>
+    <string name="editor_reset_crop">Repor</string>
+    <string name="filter_original">Original</string>
+    <string name="filter_bw">Preto e branco</string>
+    <string name="filter_grayscale">Tons de cinzento</string>
+    <string name="filter_enhance">Melhorar</string>
+
+    <!-- Viewer / document detail -->
+    <string name="viewer_extract_text">Extrair texto</string>
+    <string name="viewer_export_pdf">Exportar como PDF</string>
+    <string name="viewer_export_images">Exportar como imagens</string>
+    <string name="viewer_share">Partilhar</string>
+    <string name="viewer_add_page">Adicionar página</string>
+    <string name="extracted_text_title">Texto extraído</string>
+    <string name="extracted_text_empty">Não foi encontrado texto nesta página.</string>
+    <string name="extracted_text_copy">Copiar texto</string>
+    <string name="extracted_text_copied">Texto copiado para a área de transferência</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Definições</string>
+    <string name="settings_section_appearance">Aparência</string>
+    <string name="settings_theme">Tema</string>
+    <string name="settings_theme_dark">Escuro</string>
+    <string name="settings_theme_light">Claro</string>
+    <string name="settings_theme_system">Seguir o sistema</string>
+    <string name="settings_section_language">Idioma</string>
+    <string name="settings_language">Idioma</string>
+    <string name="settings_language_en">Inglês</string>
+    <string name="settings_language_pt">Português (Portugal)</string>
+    <string name="settings_section_about">Acerca de</string>
+    <string name="settings_about">Acerca de</string>
+
+    <!-- About -->
+    <string name="about_title">Acerca de</string>
+    <string name="about_developed_by">Desenvolvido por</string>
+    <string name="about_developer_name">David Arsénio Martins</string>
+    <string name="about_website">Website</string>
+    <string name="about_github">GitHub</string>
+    <string name="about_version">Versão %1$s</string>
+
+    <!-- Generic -->
+    <string name="error_generic">Ocorreu um erro. Tente novamente.</string>
+    <string name="loading">A carregar…</string>
+    <string name="back">Voltar</string>
+</resources>

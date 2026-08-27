@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette derived from ividi.dev: burnt orange, burnt amber, black -->
+    <color name="burnt_orange">#C1502E</color>
+    <color name="burnt_amber">#D98E2B</color>
+    <color name="background_black">#121212</color>
+    <color name="surface_black">#1C1C1C</color>
+    <color name="background_light">#FBF7F2</color>
+    <color name="surface_light">#FFFFFF</color>
+</resources>
