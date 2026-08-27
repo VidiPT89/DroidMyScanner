@@ -20,6 +20,28 @@ object ImageProcessor {
 
     fun loadBitmap(path: String): Bitmap? = BitmapFactory.decodeFile(path)
 
+    /**
+     * Decodes a bitmap downsampled to at most [maxDimension] on its longest side.
+     * Camera scans are commonly 12MP+; decoding them at full resolution just to show a
+     * thumbnail or an on-screen preview can spike memory enough to be jetsam-killed on a
+     * real device, especially when several pages are decoded at once (e.g. a thumbnail row).
+     * Use [loadBitmap] only where the true full-resolution pixels are actually needed
+     * (export, OCR, final crop/filter processing).
+     */
+    fun loadDownsampledBitmap(path: String, maxDimension: Int = 1200): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sampleSize = 1
+        while (bounds.outWidth / (sampleSize * 2) >= maxDimension || bounds.outHeight / (sampleSize * 2) >= maxDimension) {
+            sampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        return BitmapFactory.decodeFile(path, options)
+    }
+
     fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {
         if (degrees % 360 == 0) return bitmap
         val matrix = Matrix().apply { postRotate(degrees.toFloat()) }

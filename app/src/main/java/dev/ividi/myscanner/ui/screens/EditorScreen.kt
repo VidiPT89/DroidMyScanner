@@ -161,7 +161,7 @@ private fun CropCanvas(
     onTopLeftDrag: (Offset) -> Unit,
     onBottomRightDrag: (Offset) -> Unit
 ) {
-    val bitmap = remember(imagePath) { BitmapFactory.decodeFile(imagePath) }
+    val bitmap = remember(imagePath) { dev.ividi.myscanner.scanner.ImageProcessor.loadDownsampledBitmap(imagePath) }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         bitmap?.let {
             Image(

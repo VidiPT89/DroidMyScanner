@@ -184,7 +184,7 @@ fun ViewerScreen(
 
 @Composable
 private fun PageThumbnail(page: ScanPage, onClick: () -> Unit, onExtractText: () -> Unit) {
-    val bitmap = remember(page.editedPath) { BitmapFactory.decodeFile(page.editedPath) }
+    val bitmap = remember(page.editedPath) { dev.ividi.myscanner.scanner.ImageProcessor.loadDownsampledBitmap(page.editedPath, maxDimension = 600) }
     Column {
         Card(
             onClick = onClick,
