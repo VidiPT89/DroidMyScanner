@@ -36,7 +36,6 @@
     <string name="save">Guardar</string>
     <string name="rename_document_title">Mudar nome do documento</string>
     <string name="document_name_label">Nome do documento</string>
-    <string name="new_document_default_name">Documento %1$s</string>
     <string name="home_search_hint">Pesquisar por nome ou etiqueta</string>
 
     <!-- Pastas -->
@@ -70,12 +69,12 @@
     <string name="editor_crop">Recortar</string>
     <string name="editor_rotate">Rodar</string>
     <string name="editor_filter">Filtro</string>
-    <string name="editor_reorder">Reordenar páginas</string>
     <string name="editor_delete_page">Eliminar página</string>
     <string name="editor_done">Concluído</string>
     <string name="editor_reset_crop">Repor</string>
     <string name="editor_auto_crop">Deteção automática</string>
     <string name="editor_crop_grid_hint">Arraste os cantos para ajustar o recorte</string>
+    <string name="editor_detecting_edges">A detetar contornos…</string>
     <string name="filter_original">Original</string>
     <string name="filter_bw">Preto e branco</string>
     <string name="filter_grayscale">Tons de cinzento</string>
@@ -97,12 +96,10 @@
     <!-- Settings -->
     <string name="settings_title">Definições</string>
     <string name="settings_section_appearance">Aparência</string>
-    <string name="settings_theme">Tema</string>
     <string name="settings_theme_dark">Escuro</string>
     <string name="settings_theme_light">Claro</string>
     <string name="settings_theme_system">Seguir o sistema</string>
     <string name="settings_section_language">Idioma</string>
-    <string name="settings_language">Idioma</string>
     <string name="settings_language_en">Inglês</string>
     <string name="settings_language_pt">Português (Portugal)</string>
     <string name="settings_section_about">Acerca de</string>
@@ -117,7 +114,5 @@
     <string name="about_version">Versão %1$s</string>
 
     <!-- Generic -->
-    <string name="error_generic">Ocorreu um erro. Tente novamente.</string>
-    <string name="loading">A carregar…</string>
     <string name="back">Voltar</string>
 </resources>

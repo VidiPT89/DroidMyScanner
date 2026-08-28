@@ -238,14 +238,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun resetPageCrop(documentId: String, pageId: String) {
-        val doc = repository.getDocument(documentId) ?: return
-        val page = doc.pages.find { it.id == pageId } ?: return
-        updatePage(documentId, pageId) {
-            it.copy(editedPath = page.originalPath, cropLeft = 0f, cropTop = 0f, cropRight = 1f, cropBottom = 1f, rotationDegrees = 0)
-        }
-    }
-
     fun addPagesToDocument(documentId: String, pagePaths: List<String>) {
         val doc = repository.getDocument(documentId) ?: return
         val newPages = pagePaths.map { path -> ScanPage(id = UUID.randomUUID().toString(), originalPath = path, editedPath = path) }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -66,22 +67,27 @@ fun EditorScreen(
     onRotate: () -> Unit,
     onFilterSelected: (PageFilter) -> Unit,
     onCropApplied: (Float, Float, Float, Float) -> Unit,
-    onResetCrop: () -> Unit,
     onDeletePage: () -> Unit
 ) {
     val hasExistingCrop = page.cropLeft > 0f || page.cropTop > 0f || page.cropRight < 1f || page.cropBottom < 1f
     var topLeft by remember(page.id) { mutableStateOf(Offset(page.cropLeft, page.cropTop)) }
     var bottomRight by remember(page.id) { mutableStateOf(Offset(page.cropRight, page.cropBottom)) }
     var isDragging by remember(page.id) { mutableStateOf(false) }
+    var isDetecting by remember(page.id) { mutableStateOf(false) }
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     suspend fun runAutoDetect() {
-        val bitmap = withContext(Dispatchers.IO) {
-            ImageProcessor.loadDownsampledBitmap(page.editedPath)
-        } ?: return
-        val bounds = ImageProcessor.detectContentBounds(bitmap)
-        topLeft = Offset(bounds.left, bounds.top)
-        bottomRight = Offset(bounds.right, bounds.bottom)
+        isDetecting = true
+        try {
+            val bitmap = withContext(Dispatchers.IO) {
+                ImageProcessor.loadDownsampledBitmap(page.editedPath)
+            } ?: return
+            val bounds = ImageProcessor.detectContentBounds(bitmap)
+            topLeft = Offset(bounds.left, bounds.top)
+            bottomRight = Offset(bounds.right, bounds.bottom)
+        } finally {
+            isDetecting = false
+        }
     }
 
     // Only auto-detect on first open of a page that has no manual crop yet - never
@@ -128,6 +134,31 @@ fun EditorScreen(
                     onTopLeftDrag = { delta -> topLeft = clampPoint(topLeft + delta) },
                     onBottomRightDrag = { delta -> bottomRight = clampPoint(bottomRight + delta) }
                 )
+            }
+
+            // Fixed-height slot regardless of content so the crop canvas above never
+            // resizes when detection starts or stops.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (isDetecting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = " " + stringResource(R.string.editor_detecting_edges),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             Row(

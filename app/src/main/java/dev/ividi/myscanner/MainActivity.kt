@@ -54,8 +54,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            val themeMode by viewModel.themeMode.collectAsStateSafe(AppThemeMode.DARK)
-            val language by viewModel.language.collectAsStateSafe(AppLanguage.ENGLISH)
+            val themeMode by viewModel.themeMode.collectAsState()
+            val language by viewModel.language.collectAsState()
 
             androidx.compose.runtime.LaunchedEffect(language) {
                 LocaleManager.apply(language)
@@ -75,15 +75,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun <T> kotlinx.coroutines.flow.StateFlow<T>.collectAsStateSafe(initial: T) =
-    this.collectAsState()
-
-@Composable
 private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
     val navController = rememberNavController()
-    val onboardingDone by viewModel.onboardingDone.collectAsStateSafe(false)
-    val documents by viewModel.documents.collectAsStateSafe(emptyList())
-    val extractedText by viewModel.extractedText.collectAsStateSafe(null)
+    val onboardingDone by viewModel.onboardingDone.collectAsState()
+    val documents by viewModel.documents.collectAsState()
+    val extractedText by viewModel.extractedText.collectAsState()
     val scope = rememberCoroutineScope()
 
     var hasCameraPermission by remember {
@@ -246,10 +242,10 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
                     onOpenSettings = { openAppSettings(activity) }
                 )
             } else {
-                val filteredDocuments by viewModel.filteredDocuments.collectAsStateSafe(emptyList())
-                val folders by viewModel.folders.collectAsStateSafe(emptyList())
-                val selectedFolderId by viewModel.selectedFolderId.collectAsStateSafe(null)
-                val searchQuery by viewModel.searchQuery.collectAsStateSafe("")
+                val filteredDocuments by viewModel.filteredDocuments.collectAsState()
+                val folders by viewModel.folders.collectAsState()
+                val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+                val searchQuery by viewModel.searchQuery.collectAsState()
                 HomeScreen(
                     documents = filteredDocuments,
                     folders = folders,
@@ -350,7 +346,6 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
                     onRotate = { viewModel.rotatePage(docId, pageId, 90) },
                     onFilterSelected = { filter -> viewModel.setPageFilter(docId, pageId, filter) },
                     onCropApplied = { l, t, r, b -> viewModel.cropPage(docId, pageId, l, t, r, b) },
-                    onResetCrop = { viewModel.resetPageCrop(docId, pageId) },
                     onDeletePage = {
                         viewModel.deletePage(docId, pageId)
                         navController.popBackStack()
@@ -360,8 +355,8 @@ private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
         }
 
         composable(Routes.SETTINGS) {
-            val themeMode by viewModel.themeMode.collectAsStateSafe(AppThemeMode.DARK)
-            val language by viewModel.language.collectAsStateSafe(AppLanguage.ENGLISH)
+            val themeMode by viewModel.themeMode.collectAsState()
+            val language by viewModel.language.collectAsState()
             SettingsScreen(
                 themeMode = themeMode,
                 language = language,
