@@ -5,12 +5,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,7 +45,12 @@ import dev.ividi.myscanner.ui.theme.DroidMyScannerTheme
 import dev.ividi.myscanner.viewmodel.AppViewModel
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+// AppCompatActivity, not the plain ComponentActivity Compose defaults to, because
+// AppCompatDelegate.setApplicationLocales() (LocaleManager.kt) only auto-applies its
+// per-app language override below Android 13 through AppCompatActivity's own
+// attachBaseContext/getResources hooks -- on a plain ComponentActivity it would silently
+// have no effect at all pre-API 33 (minSdk here is 24), not even on this app's own screens.
+class MainActivity : AppCompatActivity() {
 
     private val viewModel: AppViewModel by viewModels()
 
@@ -75,7 +80,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppRoot(viewModel: AppViewModel, activity: ComponentActivity) {
+private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
     val navController = rememberNavController()
     val onboardingDone by viewModel.onboardingDone.collectAsState()
     val documents by viewModel.documents.collectAsState()
