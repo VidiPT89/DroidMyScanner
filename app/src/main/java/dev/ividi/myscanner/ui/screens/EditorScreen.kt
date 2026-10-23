@@ -6,6 +6,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,11 +42,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,20 +71,27 @@ fun EditorScreen(
     onCropApplied: (Float, Float, Float, Float) -> Unit,
     onDeletePage: () -> Unit
 ) {
+    var isCropping by remember(page.id) { mutableStateOf(false) }
+    val preview = remember(page.editedPath, page.rotationDegrees, page.filter) {
+        ImageProcessor.loadDownsampledBitmap(page.editedPath)?.let { ImageProcessor.applyFilter(ImageProcessor.rotate(it, page.rotationDegrees), page.filter) }
+    }
     val hasExistingCrop = page.cropLeft > 0f || page.cropTop > 0f || page.cropRight < 1f || page.cropBottom < 1f
     var topLeft by remember(page.id) { mutableStateOf(Offset(page.cropLeft, page.cropTop)) }
     var bottomRight by remember(page.id) { mutableStateOf(Offset(page.cropRight, page.cropBottom)) }
     var isDragging by remember(page.id) { mutableStateOf(false) }
     var isDetecting by remember(page.id) { mutableStateOf(false) }
+    var detectionGeneration by remember(page.id) { mutableStateOf(0) }
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     suspend fun runAutoDetect() {
+        val generation = ++detectionGeneration
         isDetecting = true
         try {
             val bitmap = withContext(Dispatchers.IO) {
-                ImageProcessor.loadDownsampledBitmap(page.editedPath)
+                ImageProcessor.loadDownsampledBitmap(page.originalPath)
             } ?: return
             val bounds = ImageProcessor.detectContentBounds(bitmap)
+            if (generation != detectionGeneration) return
             topLeft = Offset(bounds.left, bounds.top)
             bottomRight = Offset(bounds.right, bounds.bottom)
         } finally {
@@ -125,15 +134,17 @@ fun EditorScreen(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CropCanvas(
-                    imagePath = page.editedPath,
+                if (isCropping) CropCanvas(
+                    imagePath = page.originalPath,
                     topLeft = topLeft,
                     bottomRight = bottomRight,
                     isDragging = isDragging,
-                    onDragStateChanged = { isDragging = it },
-                    onTopLeftDrag = { delta -> topLeft = clampPoint(topLeft + delta) },
-                    onBottomRightDrag = { delta -> bottomRight = clampPoint(bottomRight + delta) }
-                )
+                    onDragStateChanged = { isDragging = it; if (it) detectionGeneration++ },
+                    onTopLeftDrag = { delta -> topLeft = Offset((topLeft.x + delta.x).coerceIn(0f, bottomRight.x - 0.01f), (topLeft.y + delta.y).coerceIn(0f, bottomRight.y - 0.01f)) },
+                    onBottomRightDrag = { delta -> bottomRight = Offset((bottomRight.x + delta.x).coerceIn(topLeft.x + 0.01f, 1f), (bottomRight.y + delta.y).coerceIn(topLeft.y + 0.01f, 1f)) }
+                ) else preview?.let {
+                    Image(bitmap = it.asImageBitmap(), contentDescription = stringResource(R.string.editor_title), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                }
             }
 
             // Fixed-height slot regardless of content so the crop canvas above never
@@ -166,7 +177,8 @@ fun EditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
-                    onClick = { coroutineScope.launch { runAutoDetect() } },
+                    enabled = !isDetecting,
+                    onClick = { isCropping = true; coroutineScope.launch { runAutoDetect() } },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.CropFree, contentDescription = null)
@@ -174,6 +186,8 @@ fun EditorScreen(
                 }
                 OutlinedButton(
                     onClick = {
+                        isCropping = true
+                        detectionGeneration++
                         topLeft = Offset(0f, 0f)
                         bottomRight = Offset(1f, 1f)
                     },
@@ -196,9 +210,15 @@ fun EditorScreen(
                     Text(" " + stringResource(R.string.editor_rotate))
                 }
                 Button(
-                    onClick = { onCropApplied(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y) },
+                    onClick = {
+                        if (isCropping) {
+                            detectionGeneration++
+                            onCropApplied(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y)
+                        }
+                        isCropping = !isCropping
+                    },
                     modifier = Modifier.weight(1f)
-                ) { Text(stringResource(R.string.editor_crop)) }
+                ) { Text(stringResource(if (isCropping) R.string.save else R.string.editor_crop)) }
             }
 
             Text(
@@ -211,6 +231,7 @@ fun EditorScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -256,69 +277,73 @@ private fun CropCanvas(
         label = "cropGridAlpha"
     )
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        bitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription = stringResource(R.string.editor_crop_grid_hint),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        val widthPx = constraints.maxWidth.toFloat()
-        val heightPx = constraints.maxHeight.toFloat()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val scale = minOf(constraints.maxWidth.toFloat() / (bitmap?.width ?: 1), constraints.maxHeight.toFloat() / (bitmap?.height ?: 1))
+        val widthPx = (bitmap?.width ?: 1) * scale
+        val heightPx = (bitmap?.height ?: 1) * scale
+        Box(modifier = Modifier.size(with(density) { widthPx.toDp() }, with(density) { heightPx.toDp() })) {
+            bitmap?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = stringResource(R.string.editor_crop_grid_hint),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
-        val overlayColor = MaterialTheme.colorScheme.primary
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val left = animatedTopLeft.x * widthPx
-            val top = animatedTopLeft.y * heightPx
-            val right = animatedBottomRight.x * widthPx
-            val bottom = animatedBottomRight.y * heightPx
+            val overlayColor = MaterialTheme.colorScheme.primary
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val left = animatedTopLeft.x * widthPx
+                val top = animatedTopLeft.y * heightPx
+                val right = animatedBottomRight.x * widthPx
+                val bottom = animatedBottomRight.y * heightPx
 
-            drawRect(
-                color = overlayColor,
-                topLeft = androidx.compose.ui.geometry.Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
-                style = Stroke(width = 3.dp.toPx())
-            )
+                drawRect(
+                    color = overlayColor,
+                    topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                    style = Stroke(width = 3.dp.toPx())
+                )
 
-            if (gridAlpha > 0.01f) {
-                val gridColor = overlayColor.copy(alpha = 0.7f * gridAlpha)
-                val thirdW = (right - left) / 3f
-                val thirdH = (bottom - top) / 3f
-                for (i in 1..2) {
-                    drawLine(
-                        color = gridColor,
-                        start = androidx.compose.ui.geometry.Offset(left + thirdW * i, top),
-                        end = androidx.compose.ui.geometry.Offset(left + thirdW * i, bottom),
-                        strokeWidth = 1.dp.toPx()
-                    )
-                    drawLine(
-                        color = gridColor,
-                        start = androidx.compose.ui.geometry.Offset(left, top + thirdH * i),
-                        end = androidx.compose.ui.geometry.Offset(right, top + thirdH * i),
-                        strokeWidth = 1.dp.toPx()
-                    )
+                if (gridAlpha > 0.01f) {
+                    val gridColor = overlayColor.copy(alpha = 0.7f * gridAlpha)
+                    val thirdW = (right - left) / 3f
+                    val thirdH = (bottom - top) / 3f
+                    for (i in 1..2) {
+                        drawLine(
+                            color = gridColor,
+                            start = androidx.compose.ui.geometry.Offset(left + thirdW * i, top),
+                            end = androidx.compose.ui.geometry.Offset(left + thirdW * i, bottom),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = gridColor,
+                            start = androidx.compose.ui.geometry.Offset(left, top + thirdH * i),
+                            end = androidx.compose.ui.geometry.Offset(right, top + thirdH * i),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
                 }
             }
-        }
 
-        CropHandle(
-            fractionalPosition = animatedTopLeft,
-            widthPx = widthPx,
-            heightPx = heightPx,
-            onDragStart = { onDragStateChanged(true) },
-            onDragEnd = { onDragStateChanged(false) },
-            onDrag = onTopLeftDrag
-        )
-        CropHandle(
-            fractionalPosition = animatedBottomRight,
-            widthPx = widthPx,
-            heightPx = heightPx,
-            onDragStart = { onDragStateChanged(true) },
-            onDragEnd = { onDragStateChanged(false) },
-            onDrag = onBottomRightDrag
-        )
+            CropHandle(
+                fractionalPosition = animatedTopLeft,
+                widthPx = widthPx,
+                heightPx = heightPx,
+                onDragStart = { onDragStateChanged(true) },
+                onDragEnd = { onDragStateChanged(false) },
+                onDrag = onTopLeftDrag
+            )
+            CropHandle(
+                fractionalPosition = animatedBottomRight,
+                widthPx = widthPx,
+                heightPx = heightPx,
+                onDragStart = { onDragStateChanged(true) },
+                onDragEnd = { onDragStateChanged(false) },
+                onDrag = onBottomRightDrag
+            )
+        }
     }
 }
 
@@ -336,6 +361,9 @@ private fun CropHandle(
     onDragEnd: () -> Unit,
     onDrag: (Offset) -> Unit
 ) {
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnStart by rememberUpdatedState(onDragStart)
+    val currentOnEnd by rememberUpdatedState(onDragEnd)
     val density = androidx.compose.ui.platform.LocalDensity.current
     val xDp = with(density) { (fractionalPosition.x * widthPx).toDp() }
     val yDp = with(density) { (fractionalPosition.y * heightPx).toDp() }
@@ -346,15 +374,15 @@ private fun CropHandle(
         modifier = Modifier
             .offset(x = xDp - touchTargetSize / 2, y = yDp - touchTargetSize / 2)
             .size(touchTargetSize)
-            .pointerInput(Unit) {
+            .pointerInput(widthPx, heightPx) {
                 detectDragGestures(
-                    onDragStart = { onDragStart() },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragEnd() }
+                    onDragStart = { currentOnStart() },
+                    onDragEnd = { currentOnEnd() },
+                    onDragCancel = { currentOnEnd() }
                 ) { change, dragAmount ->
                     change.consume()
                     val normalized = Offset(dragAmount.x / widthPx, dragAmount.y / heightPx)
-                    onDrag(normalized)
+                    currentOnDrag(normalized)
                 }
             },
         contentAlignment = Alignment.Center
@@ -366,6 +394,3 @@ private fun CropHandle(
         )
     }
 }
-
-private fun clampPoint(offset: Offset): Offset =
-    Offset(offset.x.coerceIn(0f, 1f), offset.y.coerceIn(0f, 1f))

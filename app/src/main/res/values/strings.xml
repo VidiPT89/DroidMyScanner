@@ -14,11 +14,11 @@
     <string name="onboarding_get_started">Get started</string>
 
     <!-- Permissions -->
-    <string name="permission_camera_rationale_title">Camera access needed</string>
-    <string name="permission_camera_rationale_body">MyScanner needs access to your camera to scan documents. Nothing is uploaded anywhere; all processing happens on your device.</string>
-    <string name="permission_grant">Grant permission</string>
-    <string name="permission_denied_message">Camera permission is required to scan documents. You can enable it in system settings.</string>
-    <string name="permission_open_settings">Open settings</string>
+
+
+
+
+
 
     <!-- Home / documents -->
     <string name="home_title">My documents</string>
@@ -115,4 +115,5 @@
 
     <!-- Generic -->
     <string name="back">Back</string>
+    <string name="operation_failed">The operation failed. Check the file and available storage, then try again. Your saved documents have been preserved.</string>
 </resources>

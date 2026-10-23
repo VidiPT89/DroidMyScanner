@@ -1,13 +1,9 @@
 package dev.ividi.myscanner
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -25,7 +21,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
-import dev.ividi.myscanner.data.AppLanguage
 import dev.ividi.myscanner.data.AppThemeMode
 import dev.ividi.myscanner.data.LocaleManager
 import dev.ividi.myscanner.data.DocumentKind
@@ -38,7 +33,6 @@ import dev.ividi.myscanner.ui.screens.AboutScreen
 import dev.ividi.myscanner.ui.screens.EditorScreen
 import dev.ividi.myscanner.ui.screens.HomeScreen
 import dev.ividi.myscanner.ui.screens.OnboardingScreen
-import dev.ividi.myscanner.ui.screens.PermissionRationaleScreen
 import dev.ividi.myscanner.ui.screens.SettingsScreen
 import dev.ividi.myscanner.ui.screens.ViewerScreen
 import dev.ividi.myscanner.ui.theme.DroidMyScannerTheme
@@ -86,17 +80,19 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
     val documents by viewModel.documents.collectAsState()
     val extractedText by viewModel.extractedText.collectAsState()
     val scope = rememberCoroutineScope()
-
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    val operationFailed by viewModel.operationFailed.collectAsState()
+    var ioFailed by remember { mutableStateOf(false) }
+    val ioHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> ioFailed = true }
+    if (operationFailed || ioFailed) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.dismissError(); ioFailed = false },
+            text = { androidx.compose.material3.Text(activity.getString(R.string.operation_failed)) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { viewModel.dismissError(); ioFailed = false }) {
+                    androidx.compose.material3.Text(activity.getString(R.string.editor_done))
+                }
+            }
         )
-    }
-    var permissionRequestedOnce by remember { mutableStateOf(false) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        hasCameraPermission = granted
-        permissionRequestedOnce = true
     }
 
     val scannerClient = remember { DocumentScannerClient(activity) }
@@ -121,10 +117,13 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
         val uris = scanResult?.let { DocumentScannerClient.pageUris(it) } ?: emptyList()
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) {
+            pendingDocumentTarget = null
+            return@rememberLauncherForActivityResult
+        }
 
         val targetDoc = pendingDocumentTarget
-        scope.launch {
+        scope.launch(ioHandler) {
             importPickedPages(uris, targetDoc)
             pendingDocumentTarget = null
         }
@@ -138,7 +137,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
     ) { uris ->
         val targetDoc = pendingDocumentTarget
         if (uris.isNotEmpty()) {
-            scope.launch {
+            scope.launch(ioHandler) {
                 importPickedPages(uris.map { it.toString() }, targetDoc)
                 pendingDocumentTarget = null
             }
@@ -148,7 +147,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
     }
 
     fun launchGalleryFallback() {
-        scope.launch {
+        scope.launch(ioHandler) {
             if (viewModel.consumeScanFallbackNotice()) {
                 fallbackMessage = activity.getString(R.string.scan_fallback_message)
             }
@@ -171,7 +170,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
         ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            scope.launch { importPickedPages(uris.map { it.toString() }, null) }
+            scope.launch(ioHandler) { importPickedPages(uris.map { it.toString() }, null) }
         }
     }
 
@@ -188,7 +187,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            scope.launch { importBrowsedFiles(activity, uris, viewModel, navController) }
+            scope.launch(ioHandler) { importBrowsedFiles(activity, uris, viewModel, navController) }
         }
     }
 
@@ -240,38 +239,30 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
         }
 
         composable(Routes.HOME) {
-            if (!hasCameraPermission) {
-                PermissionRationaleScreen(
-                    permanentlyDenied = permissionRequestedOnce,
-                    onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                    onOpenSettings = { openAppSettings(activity) }
-                )
-            } else {
-                val filteredDocuments by viewModel.filteredDocuments.collectAsState()
-                val folders by viewModel.folders.collectAsState()
-                val selectedFolderId by viewModel.selectedFolderId.collectAsState()
-                val searchQuery by viewModel.searchQuery.collectAsState()
-                HomeScreen(
-                    documents = filteredDocuments,
-                    folders = folders,
-                    selectedFolderId = selectedFolderId,
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { viewModel.setSearchQuery(it) },
-                    onSelectFolder = { viewModel.selectFolder(it) },
-                    onCreateFolder = { name -> viewModel.createFolder(name) },
-                    onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
-                    onDeleteFolder = { id -> viewModel.deleteFolder(id) },
-                    onAssignFolder = { docId, folderId -> viewModel.setDocumentFolder(docId, folderId) },
-                    onScanClick = { launchScanner(null) },
-                    onChoosePhotosClick = { launchChoosePhotos() },
-                    onBrowseFilesClick = { launchBrowseFiles() },
-                    onOpenDocument = { docId -> openOrViewDocument(docId) },
-                    onRenameDocument = { docId, name -> viewModel.renameDocument(docId, name) },
-                    onDeleteDocument = { docId -> viewModel.deleteDocument(docId) },
-                    onShareImportedFile = { docId -> shareImportedFileDocument(docId) },
-                    onOpenSettings = { navController.navigate(Routes.SETTINGS) }
-                )
-            }
+            val filteredDocuments by viewModel.filteredDocuments.collectAsState()
+            val folders by viewModel.folders.collectAsState()
+            val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+            val searchQuery by viewModel.searchQuery.collectAsState()
+            HomeScreen(
+                documents = filteredDocuments,
+                folders = folders,
+                selectedFolderId = selectedFolderId,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                onSelectFolder = { viewModel.selectFolder(it) },
+                onCreateFolder = { name -> viewModel.createFolder(name) },
+                onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
+                onDeleteFolder = { id -> viewModel.deleteFolder(id) },
+                onAssignFolder = { docId, folderId -> viewModel.setDocumentFolder(docId, folderId) },
+                onScanClick = { launchScanner(null) },
+                onChoosePhotosClick = { launchChoosePhotos() },
+                onBrowseFilesClick = { launchBrowseFiles() },
+                onOpenDocument = { docId -> openOrViewDocument(docId) },
+                onRenameDocument = { docId, name -> viewModel.renameDocument(docId, name) },
+                onDeleteDocument = { docId -> viewModel.deleteDocument(docId) },
+                onShareImportedFile = { docId -> shareImportedFileDocument(docId) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+            )
         }
 
         composable(
@@ -282,36 +273,37 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
             val document = documents.find { it.id == docId }
             if (document != null) {
                 var isBusy by remember { mutableStateOf(false) }
+                fun export(action: suspend () -> Unit) {
+                    if (isBusy) return
+                    isBusy = true
+                    scope.launch(ioHandler) {
+                        try { action() } finally { isBusy = false }
+                    }
+                }
                 ViewerScreen(
                     document = document,
                     extractedText = extractedText,
                     isBusy = isBusy,
-                    onBack = { navController.popBackStack() },
+                    onBack = { viewModel.clearExtractedText(); navController.popBackStack() },
                     onPageClick = { page -> navController.navigate(Routes.editor(docId, page.id)) },
                     onAddPage = { launchScanner(docId) },
                     onExtractText = { page -> viewModel.extractTextFromPage(page) },
                     onDismissExtractedText = { viewModel.clearExtractedText() },
                     onExportPdf = {
-                        scope.launch {
-                            isBusy = true
+                        export {
                             val file = PdfExporter.export(activity, document)
-                            isBusy = false
                             shareFile(activity, file, "application/pdf")
                         }
                     },
                     onExportImages = {
-                        scope.launch {
-                            isBusy = true
+                        export {
                             val files = ImageExporter.export(activity, document)
-                            isBusy = false
                             shareFiles(activity, files, "image/jpeg")
                         }
                     },
                     onExportWord = {
-                        scope.launch {
-                            isBusy = true
+                        export {
                             val file = DocxExporter.export(activity, document)
-                            isBusy = false
                             shareFile(
                                 activity,
                                 file,
@@ -320,10 +312,8 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
                         }
                     },
                     onShare = {
-                        scope.launch {
-                            isBusy = true
+                        export {
                             val file = PdfExporter.export(activity, document)
-                            isBusy = false
                             shareFile(activity, file, "application/pdf")
                         }
                     },

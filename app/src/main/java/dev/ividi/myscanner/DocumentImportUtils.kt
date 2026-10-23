@@ -3,10 +3,11 @@ package dev.ividi.myscanner
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.provider.Settings
 import android.webkit.MimeTypeMap
 import androidx.activity.ComponentActivity
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dev.ividi.myscanner.pdf.PdfImporter
 import dev.ividi.myscanner.ui.Routes
 import dev.ividi.myscanner.viewmodel.AppViewModel
@@ -35,9 +36,7 @@ internal suspend fun importBrowsedFiles(
             }
             mimeType == "application/pdf" -> {
                 val tempId = java.util.UUID.randomUUID().toString()
-                val pages = runCatching {
-                    PdfImporter.renderPagesToFiles(activity, uri) { viewModel.newPageFile(tempId) }
-                }.getOrDefault(emptyList())
+                val pages = PdfImporter.renderPagesToFiles(activity, uri) { viewModel.newPageFile(tempId) }
                 if (pages.isNotEmpty()) {
                     val docName = fileName.substringBeforeLast('.').ifBlank { fileName }
                     lastPdfOrImageDocId = viewModel.createDocumentFromPages(docName, pages)
@@ -45,12 +44,13 @@ internal suspend fun importBrowsedFiles(
             }
             else -> {
                 val destFile = viewModel.newImportedFile(fileName)
-                val copied = runCatching {
-                    activity.contentResolver.openInputStream(uri)?.use { input ->
+                val copied = withContext(Dispatchers.IO) { runCatching {
+                    val inputStream = activity.contentResolver.openInputStream(uri) ?: error("Unable to open import")
+                    inputStream.use { input ->
                         destFile.outputStream().use { output -> input.copyTo(output) }
                     }
                     true
-                }.getOrDefault(false)
+                }.getOrElse { destFile.delete(); throw it } }
                 if (copied) {
                     viewModel.createImportedFileDocument(fileName, destFile.absolutePath)
                 }
@@ -110,12 +110,13 @@ internal suspend fun copyUriToLocalFile(
 ): String? {
     val tempId = targetDocId ?: "inbox"
     val destFile = viewModel.newPageFile(tempId)
-    return runCatching {
-        activity.contentResolver.openInputStream(uri)?.use { input ->
+    return withContext(Dispatchers.IO) { runCatching {
+        val stream = activity.contentResolver.openInputStream(uri) ?: error("Unable to open image")
+        stream.use { input ->
             destFile.outputStream().use { output -> input.copyTo(output) }
         }
         destFile.absolutePath
-    }.getOrNull()
+    }.getOrElse { destFile.delete(); throw it } }
 }
 
 internal fun shareFile(activity: ComponentActivity, file: java.io.File, mimeType: String) {
@@ -141,11 +142,4 @@ internal fun shareFiles(activity: ComponentActivity, files: List<java.io.File>, 
 
 internal fun openUrl(activity: ComponentActivity, url: String) {
     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-}
-
-internal fun openAppSettings(activity: ComponentActivity) {
-    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-        data = Uri.fromParts("package", activity.packageName, null)
-    }
-    activity.startActivity(intent)
 }

@@ -18,8 +18,7 @@ class DocumentScannerClient(private val activity: Activity) {
         .setGalleryImportAllowed(true)
         .setPageLimit(50)
         .setResultFormats(
-            GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
-            GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+            GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
         )
         .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
         .build()

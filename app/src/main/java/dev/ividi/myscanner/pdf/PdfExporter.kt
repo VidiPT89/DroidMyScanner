@@ -18,18 +18,20 @@ import java.io.FileOutputStream
 object PdfExporter {
 
     suspend fun export(context: Context, document: ScanDocument): File = withContext(Dispatchers.IO) {
+        require(document.pages.isNotEmpty()) { "Document has no pages" }
         val pdf = PdfDocument()
         try {
-            document.pages.forEach { page ->
+            document.pages.forEachIndexed { index, page ->
                 val bitmap = renderPageBitmap(page.editedPath, page.rotationDegrees, page.filter)
-                    ?: return@forEach
-                val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, document.pages.indexOf(page) + 1).create()
+                    ?: error("Unable to read page ${index + 1}")
+                val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
                 val pdfPage = pdf.startPage(pageInfo)
                 pdfPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
                 pdf.finishPage(pdfPage)
+                bitmap.recycle()
             }
 
-            val exportsDir = File(context.filesDir, "exports").apply { mkdirs() }
+            val exportsDir = File(context.cacheDir, "exports/${java.util.UUID.randomUUID()}").apply { mkdirs() }
             val outFile = File(exportsDir, "${sanitize(document.name)}.pdf")
             FileOutputStream(outFile).use { pdf.writeTo(it) }
             outFile

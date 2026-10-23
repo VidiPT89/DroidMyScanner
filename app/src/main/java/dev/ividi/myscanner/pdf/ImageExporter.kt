@@ -14,9 +14,10 @@ import java.io.File
 object ImageExporter {
 
     suspend fun export(context: Context, document: ScanDocument): List<File> = withContext(Dispatchers.IO) {
-        val exportsDir = File(context.filesDir, "exports/${document.id}").apply { mkdirs() }
-        document.pages.mapIndexedNotNull { index, page ->
-            val bitmap = ImageProcessor.loadBitmap(page.editedPath) ?: return@mapIndexedNotNull null
+        require(document.pages.isNotEmpty()) { "Document has no pages" }
+        val exportsDir = File(context.cacheDir, "exports/${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        document.pages.mapIndexed { index, page ->
+            val bitmap = ImageProcessor.loadBitmap(page.editedPath) ?: error("Unable to read page ${index + 1}")
             val rotated = ImageProcessor.rotate(bitmap, page.rotationDegrees)
             val filtered = ImageProcessor.applyFilter(rotated, page.filter)
             val outFile = File(exportsDir, "page_${index + 1}.jpg")

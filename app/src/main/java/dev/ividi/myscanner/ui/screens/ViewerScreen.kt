@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
@@ -88,7 +87,7 @@ fun ViewerScreen(
                 },
                 actions = {
                     Box {
-                        IconButton(onClick = { exportMenuExpanded = true }) {
+                        IconButton(enabled = !isBusy && document.pages.isNotEmpty(), onClick = { exportMenuExpanded = true }) {
                             Icon(Icons.Default.FileDownload, contentDescription = stringResource(R.string.viewer_export_menu))
                         }
                         DropdownMenu(expanded = exportMenuExpanded, onDismissRequest = { exportMenuExpanded = false }) {
@@ -109,7 +108,7 @@ fun ViewerScreen(
                             )
                         }
                     }
-                    IconButton(onClick = onShare) {
+                    IconButton(enabled = !isBusy && document.pages.isNotEmpty(), onClick = onShare) {
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.viewer_share))
                     }
                 },
@@ -182,7 +181,12 @@ fun ViewerScreen(
 
 @Composable
 private fun PageThumbnail(page: ScanPage, onClick: () -> Unit, onExtractText: () -> Unit) {
-    val bitmap = remember(page.editedPath) { dev.ividi.myscanner.scanner.ImageProcessor.loadDownsampledBitmap(page.editedPath, maxDimension = 600) }
+    val bitmap = remember(page.editedPath, page.rotationDegrees, page.filter) {
+        dev.ividi.myscanner.scanner.ImageProcessor.loadDownsampledBitmap(page.editedPath, maxDimension = 600)?.let {
+            dev.ividi.myscanner.scanner.ImageProcessor.applyFilter(
+                dev.ividi.myscanner.scanner.ImageProcessor.rotate(it, page.rotationDegrees), page.filter)
+        }
+    }
     Column {
         Card(
             onClick = onClick,

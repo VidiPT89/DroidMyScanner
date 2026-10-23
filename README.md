@@ -10,7 +10,7 @@
 - ✅ On-device text recognition (OCR) with copy-to-clipboard
 - ✅ Manual crop with draggable corner handles, 90° rotation
 - ✅ Non-destructive filters: Original, Black & White, Grayscale, Auto Enhance
-- ✅ Page reordering and deletion within a document
+- ✅ Page deletion within a document
 - ✅ Export to PDF or images, with the native share sheet
 - ✅ Document management: rename, delete, animated list
 - ✅ Dark mode (default), Light mode, or follow system, with in-app toggle
@@ -56,8 +56,12 @@
 ## 🧪 Testing
 
 ```bash
-./gradlew test
+./gradlew testDebugUnitTest lintDebug assembleDebug
+# With an emulator or device connected:
+./gradlew connectedDebugAndroidTest
 ```
+
+See [review and validation limits](docs/review-2026-10-23.md).
 
 ## 📄 License
 

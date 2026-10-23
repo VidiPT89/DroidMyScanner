@@ -23,7 +23,27 @@ import kotlin.math.abs
  */
 object ImageProcessor {
 
-    fun loadBitmap(path: String): Bitmap? = BitmapFactory.decodeFile(path)
+    fun loadBitmap(path: String): Bitmap? = BitmapFactory.decodeFile(path)?.let { orient(it, path) }
+
+    private fun orient(bitmap: Bitmap, path: String): Bitmap {
+        val orientation = runCatching {
+            android.media.ExifInterface(path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+        }.getOrDefault(1)
+        val matrix = Matrix()
+        when (orientation) {
+            2 -> matrix.setScale(-1f, 1f)
+            3 -> matrix.setRotate(180f)
+            4 -> matrix.setScale(1f, -1f)
+            5 -> { matrix.setRotate(90f); matrix.postScale(-1f, 1f) }
+            6 -> matrix.setRotate(90f)
+            7 -> { matrix.setRotate(-90f); matrix.postScale(-1f, 1f) }
+            8 -> matrix.setRotate(-90f)
+            else -> return bitmap
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also {
+            if (it !== bitmap) bitmap.recycle()
+        }
+    }
 
     /**
      * Decodes a bitmap downsampled to at most [maxDimension] on its longest side.
@@ -39,12 +59,12 @@ object ImageProcessor {
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var sampleSize = 1
-        while (bounds.outWidth / (sampleSize * 2) >= maxDimension || bounds.outHeight / (sampleSize * 2) >= maxDimension) {
+        while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
             sampleSize *= 2
         }
 
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        return BitmapFactory.decodeFile(path, options)
+        return BitmapFactory.decodeFile(path, options)?.let { orient(it, path) }
     }
 
     fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {
@@ -55,10 +75,11 @@ object ImageProcessor {
 
     /** Crops using normalized [0,1] rectangle coordinates relative to the bitmap. */
     fun crop(bitmap: Bitmap, left: Float, top: Float, right: Float, bottom: Float): Bitmap {
-        val l = (left.coerceIn(0f, 1f) * bitmap.width).toInt()
-        val t = (top.coerceIn(0f, 1f) * bitmap.height).toInt()
-        val r = (right.coerceIn(0f, 1f) * bitmap.width).toInt()
-        val b = (bottom.coerceIn(0f, 1f) * bitmap.height).toInt()
+        require(listOf(left, top, right, bottom).all { it.isFinite() })
+        val l = (minOf(left, right).coerceIn(0f, 1f) * bitmap.width).toInt().coerceAtMost(bitmap.width - 1)
+        val t = (minOf(top, bottom).coerceIn(0f, 1f) * bitmap.height).toInt().coerceAtMost(bitmap.height - 1)
+        val r = (maxOf(left, right).coerceIn(0f, 1f) * bitmap.width).toInt()
+        val b = (maxOf(top, bottom).coerceIn(0f, 1f) * bitmap.height).toInt()
         val width = (r - l).coerceAtLeast(1)
         val height = (b - t).coerceAtLeast(1)
         return Bitmap.createBitmap(bitmap, l, t, width, height)
@@ -77,9 +98,9 @@ object ImageProcessor {
         // High-contrast grayscale that approximates a scanned black & white document.
         return ColorMatrix(
             floatArrayOf(
-                1.5f, 1.5f, 1.5f, 0f, -180f,
-                1.5f, 1.5f, 1.5f, 0f, -180f,
-                1.5f, 1.5f, 1.5f, 0f, -180f,
+                0.4485f, 0.8805f, 0.171f, 0f, -64f,
+                0.4485f, 0.8805f, 0.171f, 0f, -64f,
+                0.4485f, 0.8805f, 0.171f, 0f, -64f,
                 0f, 0f, 0f, 1f, 0f
             )
         )
@@ -210,7 +231,7 @@ object ImageProcessor {
 
     fun saveTo(bitmap: Bitmap, file: File, quality: Int = 92) {
         FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            check(bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)) { "JPEG encoding failed" }
         }
     }
 }

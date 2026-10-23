@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -75,27 +76,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _extractedText = MutableStateFlow<String?>(null)
     val extractedText: StateFlow<String?> = _extractedText
 
+    private val _operationFailed = MutableStateFlow(false)
+    val operationFailed: StateFlow<Boolean> = _operationFailed
+    private val errorHandler = CoroutineExceptionHandler { _, _ -> _operationFailed.value = true }
+    fun dismissError() { _operationFailed.value = false }
+
+    override fun onCleared() {
+        textRecognizer.close()
+        super.onCleared()
+    }
+
     init {
-        viewModelScope.launch { repository.load() }
+        viewModelScope.launch(errorHandler) { repository.load() }
     }
 
     fun setThemeMode(mode: AppThemeMode) {
-        viewModelScope.launch { preferences.setThemeMode(mode) }
+        viewModelScope.launch(errorHandler) { preferences.setThemeMode(mode) }
     }
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch {
+        viewModelScope.launch(errorHandler) {
             preferences.setLanguage(language)
             LocaleManager.apply(language)
         }
     }
 
     fun completeOnboarding() {
-        viewModelScope.launch { preferences.setOnboardingDone(true) }
+        viewModelScope.launch(errorHandler) { preferences.setOnboardingDone(true) }
     }
 
     /** Creates a new document from freshly scanned page image paths (already local files). */
-    fun createDocumentFromScan(pagePaths: List<String>): String {
+    suspend fun createDocumentFromScan(pagePaths: List<String>): String {
         val docId = UUID.randomUUID().toString()
         val timestamp = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date())
         val pages = pagePaths.map { path ->
@@ -105,14 +116,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             id = docId,
             name = timestamp,
             createdAtMillis = System.currentTimeMillis(),
+            folderId = _selectedFolderId.value,
             pages = pages
         )
-        viewModelScope.launch { repository.upsertDocument(document) }
+        repository.upsertDocument(document)
         return docId
     }
 
     /** Creates a new document from freshly rendered PDF page image paths (already local files). */
-    fun createDocumentFromPages(name: String, pagePaths: List<String>): String {
+    suspend fun createDocumentFromPages(name: String, pagePaths: List<String>): String {
         val docId = UUID.randomUUID().toString()
         val pages = pagePaths.map { path ->
             ScanPage(id = UUID.randomUUID().toString(), originalPath = path, editedPath = path)
@@ -121,23 +133,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             id = docId,
             name = name,
             createdAtMillis = System.currentTimeMillis(),
+            folderId = _selectedFolderId.value,
             pages = pages
         )
-        viewModelScope.launch { repository.upsertDocument(document) }
+        repository.upsertDocument(document)
         return docId
     }
 
     /** Creates an "imported file" document entry for a non-image, non-PDF file copied as-is. */
-    fun createImportedFileDocument(originalFileName: String, storedFilePath: String): String {
+    suspend fun createImportedFileDocument(originalFileName: String, storedFilePath: String): String {
         val docId = UUID.randomUUID().toString()
         val document = ScanDocument(
             id = docId,
             name = originalFileName.substringBeforeLast('.').ifBlank { originalFileName },
             createdAtMillis = System.currentTimeMillis(),
+            folderId = _selectedFolderId.value,
             documentKind = DocumentKind.ImportedFile(originalFileName),
             importedFilePath = storedFilePath
         )
-        viewModelScope.launch { repository.upsertDocument(document) }
+        repository.upsertDocument(document)
         return docId
     }
 
@@ -155,58 +169,54 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createFolder(name: String) {
         if (name.isBlank()) return
-        viewModelScope.launch { repository.addFolder(name.trim()) }
+        viewModelScope.launch(errorHandler) { repository.addFolder(name.trim()) }
     }
 
     fun renameFolder(folderId: String, newName: String) {
         if (newName.isBlank()) return
-        viewModelScope.launch { repository.renameFolder(folderId, newName.trim()) }
+        viewModelScope.launch(errorHandler) { repository.renameFolder(folderId, newName.trim()) }
     }
 
     fun deleteFolder(folderId: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(errorHandler) {
             repository.deleteFolder(folderId)
             if (_selectedFolderId.value == folderId) _selectedFolderId.value = null
         }
     }
 
     fun setDocumentFolder(documentId: String, folderId: String?) {
-        val doc = repository.getDocument(documentId) ?: return
-        viewModelScope.launch { repository.upsertDocument(doc.copy(folderId = folderId)) }
+        viewModelScope.launch(errorHandler) { repository.updateDocument(documentId) { it.copy(folderId = folderId) } }
     }
 
     fun addTag(documentId: String, tag: String) {
         val trimmed = tag.trim()
         if (trimmed.isEmpty()) return
-        val doc = repository.getDocument(documentId) ?: return
-        if (doc.tags.any { it.equals(trimmed, ignoreCase = true) }) return
-        viewModelScope.launch { repository.upsertDocument(doc.copy(tags = doc.tags + trimmed)) }
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { doc ->
+                if (doc.tags.any { it.equals(trimmed, ignoreCase = true) }) doc
+                else doc.copy(tags = doc.tags + trimmed)
+            }
+        }
     }
 
     fun removeTag(documentId: String, tag: String) {
-        val doc = repository.getDocument(documentId) ?: return
-        viewModelScope.launch { repository.upsertDocument(doc.copy(tags = doc.tags - tag)) }
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { it.copy(tags = it.tags - tag) }
+        }
     }
 
     fun renameDocument(id: String, newName: String) {
-        viewModelScope.launch { repository.renameDocument(id, newName) }
+        viewModelScope.launch(errorHandler) { repository.renameDocument(id, newName) }
     }
 
     fun deleteDocument(id: String) {
-        viewModelScope.launch { repository.deleteDocument(id) }
+        viewModelScope.launch(errorHandler) { repository.deleteDocument(id) }
     }
 
     fun deletePage(documentId: String, pageId: String) {
-        val doc = repository.getDocument(documentId) ?: return
-        val updated = doc.copy(pages = doc.pages.filterNot { it.id == pageId })
-        viewModelScope.launch { repository.upsertDocument(updated) }
-    }
-
-    fun reorderPages(documentId: String, orderedPageIds: List<String>) {
-        val doc = repository.getDocument(documentId) ?: return
-        val byId = doc.pages.associateBy { it.id }
-        val reordered = orderedPageIds.mapNotNull { byId[it] }
-        viewModelScope.launch { repository.upsertDocument(doc.copy(pages = reordered)) }
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { doc -> doc.copy(pages = doc.pages.filterNot { it.id == pageId }) }
+        }
     }
 
     fun rotatePage(documentId: String, pageId: String, deltaDegrees: Int) {
@@ -220,7 +230,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun cropPage(documentId: String, pageId: String, left: Float, top: Float, right: Float, bottom: Float) {
         val doc = repository.getDocument(documentId) ?: return
         val page = doc.pages.find { it.id == pageId } ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(errorHandler) {
             val outFile = withContext(Dispatchers.Default) {
                 val original = ImageProcessor.loadBitmap(page.originalPath) ?: return@withContext null
                 val cropped = ImageProcessor.crop(original, left, top, right, bottom)
@@ -231,26 +241,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             updatePage(documentId, pageId) {
                 it.copy(
                     editedPath = outFile.absolutePath,
-                    cropLeft = left, cropTop = top, cropRight = right, cropBottom = bottom,
-                    rotationDegrees = 0
+                    cropLeft = left, cropTop = top, cropRight = right, cropBottom = bottom
                 )
             }
         }
     }
 
     fun addPagesToDocument(documentId: String, pagePaths: List<String>) {
-        val doc = repository.getDocument(documentId) ?: return
         val newPages = pagePaths.map { path -> ScanPage(id = UUID.randomUUID().toString(), originalPath = path, editedPath = path) }
-        viewModelScope.launch { repository.upsertDocument(doc.copy(pages = doc.pages + newPages)) }
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { it.copy(pages = it.pages + newPages) }
+        }
     }
 
     fun extractTextFromPage(page: ScanPage) {
-        viewModelScope.launch {
+        viewModelScope.launch(errorHandler) {
             _extractedText.value = null
-            val bitmap = ImageProcessor.loadBitmap(page.editedPath)?.let { bmp ->
+            val bitmap = withContext(Dispatchers.Default) { ImageProcessor.loadBitmap(page.editedPath)?.let { bmp ->
                 val rotated = ImageProcessor.rotate(bmp, page.rotationDegrees)
                 ImageProcessor.applyFilter(rotated, page.filter)
-            }
+            } }
             _extractedText.value = if (bitmap != null) {
                 runCatching { textRecognizer.recognize(bitmap) }.getOrDefault("")
             } else {
@@ -273,13 +283,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return !alreadyShown
     }
 
-    fun documentDirectory(documentId: String): File = repository.directoryFor(documentId)
-
     fun newPageFile(documentId: String): File = repository.newPageFile(documentId)
 
     private fun updatePage(documentId: String, pageId: String, transform: (ScanPage) -> ScanPage) {
-        val doc = repository.getDocument(documentId) ?: return
-        val updatedPages = doc.pages.map { if (it.id == pageId) transform(it) else it }
-        viewModelScope.launch { repository.upsertDocument(doc.copy(pages = updatedPages)) }
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { doc ->
+                doc.copy(pages = doc.pages.map { if (it.id == pageId) transform(it) else it })
+            }
+        }
     }
 }

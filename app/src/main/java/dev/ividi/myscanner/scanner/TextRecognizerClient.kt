@@ -15,6 +15,8 @@ class TextRecognizerClient {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
+    fun close() { recognizer.close() }
+
     suspend fun recognize(bitmap: Bitmap): String = suspendCancellableCoroutine { continuation ->
         val image = InputImage.fromBitmap(bitmap, 0)
         recognizer.process(image)

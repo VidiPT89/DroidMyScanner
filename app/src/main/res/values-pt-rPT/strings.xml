@@ -14,11 +14,11 @@
     <string name="onboarding_get_started">Começar</string>
 
     <!-- Permissions -->
-    <string name="permission_camera_rationale_title">Acesso à câmara necessário</string>
-    <string name="permission_camera_rationale_body">O MyScanner precisa de aceder à câmara para digitalizar documentos. Nada é enviado para a Internet; todo o processamento é feito no seu dispositivo.</string>
-    <string name="permission_grant">Conceder permissão</string>
-    <string name="permission_denied_message">É necessária a permissão da câmara para digitalizar documentos. Pode ativá-la nas definições do sistema.</string>
-    <string name="permission_open_settings">Abrir definições</string>
+
+
+
+
+
 
     <!-- Home / documents -->
     <string name="home_title">Os meus documentos</string>
@@ -115,4 +115,5 @@
 
     <!-- Generic -->
     <string name="back">Voltar</string>
+    <string name="operation_failed">A operação falhou. Verifica o ficheiro e o espaço disponível e tenta novamente. Os documentos guardados foram preservados.</string>
 </resources>

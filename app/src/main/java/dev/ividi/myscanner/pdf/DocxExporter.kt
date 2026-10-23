@@ -21,23 +21,20 @@ import java.util.zip.ZipOutputStream
  */
 object DocxExporter {
 
-    private val textRecognizer by lazy { TextRecognizerClient() }
-
     suspend fun export(context: Context, document: ScanDocument): File = withContext(Dispatchers.IO) {
-        val pageTexts = document.pages.mapIndexed { index, page ->
+        require(document.pages.isNotEmpty()) { "Document has no pages" }
+        val textRecognizer = TextRecognizerClient()
+        val pageTexts = try { document.pages.mapIndexed { index, page ->
             val bitmap = ImageProcessor.loadBitmap(page.editedPath)?.let { bmp ->
                 val rotated = ImageProcessor.rotate(bmp, page.rotationDegrees)
                 ImageProcessor.applyFilter(rotated, page.filter)
             }
-            val text = if (bitmap != null) {
-                runCatching { textRecognizer.recognize(bitmap) }.getOrDefault("")
-            } else {
-                ""
-            }
+            checkNotNull(bitmap) { "Unable to read page ${index + 1}" }
+            val text = try { textRecognizer.recognize(bitmap) } finally { bitmap.recycle() }
             index to text
-        }
+        } } finally { textRecognizer.close() }
 
-        val exportsDir = File(context.filesDir, "exports").apply { mkdirs() }
+        val exportsDir = File(context.cacheDir, "exports/${java.util.UUID.randomUUID()}").apply { mkdirs() }
         val outFile = File(exportsDir, "${sanitize(document.name)}.docx")
         ZipOutputStream(FileOutputStream(outFile)).use { zip ->
             writeEntry(zip, "[Content_Types].xml", contentTypesXml())

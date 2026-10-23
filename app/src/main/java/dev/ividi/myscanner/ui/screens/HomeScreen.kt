@@ -47,9 +47,6 @@ import androidx.compose.ui.unit.dp
 import dev.ividi.myscanner.R
 import dev.ividi.myscanner.data.DocumentFolder
 import dev.ividi.myscanner.data.ScanDocument
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -334,6 +331,3 @@ private fun EmptyState(padding: PaddingValues) {
         )
     }
 }
-
-fun formattedDate(millis: Long): String =
-    SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))

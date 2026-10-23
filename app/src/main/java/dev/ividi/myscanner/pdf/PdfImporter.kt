@@ -34,14 +34,17 @@ object PdfImporter {
             PdfRenderer(descriptor).use { renderer ->
                 for (index in 0 until renderer.pageCount) {
                     renderer.openPage(index).use { page ->
-                        val width = (page.width * RENDER_SCALE).coerceAtLeast(1)
-                        val height = (page.height * RENDER_SCALE).coerceAtLeast(1)
+                        val scale = minOf(RENDER_SCALE.toFloat(), 2400f / maxOf(page.width, page.height))
+                        val width = (page.width * scale).toInt().coerceAtLeast(1)
+                        val height = (page.height * scale).toInt().coerceAtLeast(1)
                         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        try {
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         val outFile = newPageFile()
                         ImageProcessor.saveTo(bitmap, outFile)
                         paths.add(outFile.absolutePath)
+                        } finally { bitmap.recycle() }
                     }
                 }
             }

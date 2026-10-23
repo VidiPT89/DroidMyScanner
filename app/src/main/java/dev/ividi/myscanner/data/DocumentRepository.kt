@@ -1,6 +1,9 @@
 package dev.ividi.myscanner.data
 
 import android.content.Context
+import android.util.AtomicFile
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,99 +40,155 @@ class DocumentRepository(private val context: Context) {
     private val _folders = MutableStateFlow<List<DocumentFolder>>(emptyList())
     val folders: StateFlow<List<DocumentFolder>> = _folders.asStateFlow()
 
+    private val mutex = Mutex()
+    private var loaded = false
+
     suspend fun load() = withContext(Dispatchers.IO) {
-        val docs = if (indexFile.exists()) {
-            runCatching {
-                val json = JSONArray(indexFile.readText())
-                (0 until json.length()).map { i -> json.getJSONObject(i).toDocument() }
-            }.getOrDefault(emptyList())
-        } else {
-            emptyList()
+        mutex.withLock { loadLocked() }
+    }
+
+    private fun loadLocked() {
+        if (loaded) return
+        // Do not turn a corrupt index into an empty library that the next write destroys.
+        fun read(file: File): JSONArray = try {
+            JSONArray(AtomicFile(file).openRead().bufferedReader().use { it.readText() })
+        } catch (error: java.io.FileNotFoundException) {
+            if (file.exists() || File(file.path + ".bak").exists()) throw error
+            JSONArray()
+        }
+        val docsJson = read(indexFile)
+        val docs = (0 until docsJson.length()).map { docsJson.getJSONObject(it).toDocument() }
+        val foldersJson = read(foldersFile)
+        val folders = (0 until foldersJson.length()).map {
+            val obj = foldersJson.getJSONObject(it)
+            DocumentFolder(id = obj.getString("id"), name = obj.getString("name"))
         }
         _documents.value = docs.sortedByDescending { it.createdAtMillis }
-
-        val folders = if (foldersFile.exists()) {
-            runCatching {
-                val json = JSONArray(foldersFile.readText())
-                (0 until json.length()).map { i ->
-                    val obj = json.getJSONObject(i)
-                    DocumentFolder(id = obj.getString("id"), name = obj.getString("name"))
-                }
-            }.getOrDefault(emptyList())
-        } else {
-            emptyList()
-        }
         _folders.value = folders
+        loaded = true
     }
-
-    fun directoryFor(documentId: String): File =
-        File(scansDir, documentId).apply { mkdirs() }
 
     fun newPageFile(documentId: String, extension: String = "jpg"): File =
-        File(directoryFor(documentId), "${UUID.randomUUID()}.$extension")
+        File(File(scansDir, documentId).apply { mkdirs() }, "${UUID.randomUUID()}.$extension")
 
-    /** Allocates a destination file for a copied "imported file" document, preserving [fileName]. */
     fun newImportedFile(fileName: String): File =
-        File(importsDir, "${UUID.randomUUID()}_$fileName")
+        File(importsDir, "${UUID.randomUUID()}_${File(fileName).name}")
 
-    suspend fun upsertDocument(document: ScanDocument) = withContext(Dispatchers.IO) {
-        val current = _documents.value.toMutableList()
-        val idx = current.indexOfFirst { it.id == document.id }
-        if (idx >= 0) current[idx] = document else current.add(0, document)
-        _documents.value = current.sortedByDescending { it.createdAtMillis }
-        persist()
+    suspend fun upsertDocument(document: ScanDocument) = mutateDocuments { current ->
+        (current.filterNot { it.id == document.id } + document).sortedByDescending { it.createdAtMillis }
     }
 
-    suspend fun deleteDocument(documentId: String) = withContext(Dispatchers.IO) {
-        _documents.value = _documents.value.filterNot { it.id == documentId }
-        directoryFor(documentId).deleteRecursively()
-        persist()
+    suspend fun updateDocument(documentId: String, transform: (ScanDocument) -> ScanDocument) =
+        mutateDocuments { docs -> docs.map { if (it.id == documentId) transform(it) else it } }
+
+    suspend fun deleteDocument(documentId: String) = mutateDocuments { docs ->
+        docs.filterNot { it.id == documentId }
     }
 
-    suspend fun renameDocument(documentId: String, newName: String) = withContext(Dispatchers.IO) {
-        val doc = _documents.value.find { it.id == documentId } ?: return@withContext
-        upsertDocument(doc.copy(name = newName))
+    suspend fun renameDocument(documentId: String, newName: String) {
+        val name = newName.trim()
+        if (name.isNotEmpty()) updateDocument(documentId) { it.copy(name = name) }
     }
 
     fun getDocument(documentId: String): ScanDocument? =
         _documents.value.find { it.id == documentId }
 
-    suspend fun addFolder(name: String): DocumentFolder = withContext(Dispatchers.IO) {
-        val folder = DocumentFolder(id = UUID.randomUUID().toString(), name = name)
-        _folders.value = _folders.value + folder
-        persistFolders()
-        folder
+    private suspend fun mutateDocuments(transform: (List<ScanDocument>) -> List<ScanDocument>) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                loadLocked()
+                val old = _documents.value
+                val updated = transform(old)
+                persist(updated)
+                _documents.value = updated
+                // Only remove files after the new index is safely committed. Paths may live
+                // in the shared inbox or an import directory, not under the document ID.
+                val retained = updated.flatMap { it.filePaths() }.toSet()
+                old.flatMap { it.filePaths() }.toSet().minus(retained).forEach { path ->
+                    val file = File(path).canonicalFile
+                    val root = context.filesDir.canonicalFile
+                    if (file.path.startsWith(root.path + File.separator)) file.delete()
+                }
+            }
+        }
+
+    private fun ScanDocument.filePaths(): List<String> =
+        pages.flatMap { listOf(it.originalPath, it.editedPath) } + listOfNotNull(importedFilePath)
+
+    suspend fun addFolder(name: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            loadLocked()
+            val updated = _folders.value + DocumentFolder(id = UUID.randomUUID().toString(), name = name)
+            persistFolders(updated)
+            _folders.value = updated
+        }
     }
 
     suspend fun renameFolder(folderId: String, newName: String) = withContext(Dispatchers.IO) {
-        _folders.value = _folders.value.map { if (it.id == folderId) it.copy(name = newName) else it }
-        persistFolders()
+        mutex.withLock {
+            loadLocked()
+            val updated = _folders.value.map { if (it.id == folderId) it.copy(name = newName) else it }
+            persistFolders(updated)
+            _folders.value = updated
+        }
     }
 
     suspend fun deleteFolder(folderId: String) = withContext(Dispatchers.IO) {
-        _folders.value = _folders.value.filterNot { it.id == folderId }
-        _documents.value = _documents.value.map {
-            if (it.folderId == folderId) it.copy(folderId = null) else it
+        mutex.withLock {
+            loadLocked()
+            val docs = _documents.value.map { if (it.folderId == folderId) it.copy(folderId = null) else it }
+            val folders = _folders.value.filterNot { it.id == folderId }
+            persist(docs)
+            _documents.value = docs
+            persistFolders(folders)
+            _folders.value = folders
         }
-        persistFolders()
-        persist()
     }
 
-    private suspend fun persist() = withContext(Dispatchers.IO) {
-        val array = JSONArray()
-        _documents.value.forEach { array.put(it.toJson()) }
-        indexFile.writeText(array.toString())
+    private fun writeAtomically(file: File, content: String) {
+        val atomic = AtomicFile(file)
+        val stream = atomic.startWrite()
+        try {
+            stream.write(content.toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(stream)
+        } catch (error: Throwable) {
+            atomic.failWrite(stream)
+            throw error
+        }
     }
 
-    private suspend fun persistFolders() = withContext(Dispatchers.IO) {
+    private fun persist(documents: List<ScanDocument>) {
         val array = JSONArray()
-        _folders.value.forEach { folder ->
+        documents.forEach { array.put(it.toJson()) }
+        writeAtomically(indexFile, array.toString())
+    }
+
+    private fun persistFolders(folders: List<DocumentFolder>) {
+        val array = JSONArray()
+        folders.forEach { folder ->
             array.put(JSONObject().apply {
                 put("id", folder.id)
                 put("name", folder.name)
             })
         }
-        foldersFile.writeText(array.toString())
+        writeAtomically(foldersFile, array.toString())
+    }
+
+    private fun portablePath(path: String): String {
+        val prefix = context.filesDir.absolutePath + File.separator
+        return if (path.startsWith(prefix)) path.removePrefix(prefix) else path
+    }
+
+    private fun resolvePath(path: String): String {
+        if (!File(path).isAbsolute) return File(context.filesDir, path).absolutePath
+        // Legacy backups stored the old installation's absolute app-data directory.
+        if (!File(path).exists() && path.contains("/files/")) {
+            val relative = path.substringAfterLast("/files/")
+            if (relative.startsWith("scans/") || relative.startsWith("imports/")) {
+                return File(context.filesDir, relative).absolutePath
+            }
+        }
+        return path
     }
 
     private fun ScanDocument.toJson(): JSONObject = JSONObject().apply {
@@ -150,13 +209,13 @@ class DocumentRepository(private val context: Context) {
                 put("importedFileName", kind.originalFileName)
             }
         }
-        put("importedFilePath", importedFilePath ?: JSONObject.NULL)
+        put("importedFilePath", importedFilePath?.let(::portablePath) ?: JSONObject.NULL)
     }
 
     private fun ScanPage.toJson(): JSONObject = JSONObject().apply {
         put("id", id)
-        put("originalPath", originalPath)
-        put("editedPath", editedPath)
+        put("originalPath", portablePath(originalPath))
+        put("editedPath", portablePath(editedPath))
         put("rotationDegrees", rotationDegrees)
         put("filter", filter.name)
         put("cropLeft", cropLeft)
@@ -183,11 +242,11 @@ class DocumentRepository(private val context: Context) {
             name = getString("name"),
             createdAtMillis = getLong("createdAtMillis"),
             pages = pages,
-            folderId = if (isNull("folderId")) null else optString("folderId", null),
+            folderId = if (isNull("folderId")) null else optString("folderId").takeIf { it.isNotEmpty() },
             tags = tags,
             documentKind = documentKind,
             importedFilePath = if (has("importedFilePath") && !isNull("importedFilePath")) {
-                optString("importedFilePath", null)
+                resolvePath(getString("importedFilePath"))
             } else {
                 null
             }
@@ -196,8 +255,8 @@ class DocumentRepository(private val context: Context) {
 
     private fun JSONObject.toPage(): ScanPage = ScanPage(
         id = getString("id"),
-        originalPath = getString("originalPath"),
-        editedPath = getString("editedPath"),
+        originalPath = resolvePath(getString("originalPath")),
+        editedPath = resolvePath(getString("editedPath")),
         rotationDegrees = optInt("rotationDegrees", 0),
         filter = runCatching { PageFilter.valueOf(getString("filter")) }.getOrDefault(PageFilter.ORIGINAL),
         cropLeft = optDouble("cropLeft", 0.0).toFloat(),
