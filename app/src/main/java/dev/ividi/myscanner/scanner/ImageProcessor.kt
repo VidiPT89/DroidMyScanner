@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import androidx.core.graphics.createBitmap
+import androidx.exifinterface.media.ExifInterface
 import dev.ividi.myscanner.data.PageFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,7 +29,7 @@ object ImageProcessor {
 
     private fun orient(bitmap: Bitmap, path: String): Bitmap {
         val orientation = runCatching {
-            android.media.ExifInterface(path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+            ExifInterface(path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
         }.getOrDefault(1)
         val matrix = Matrix()
         when (orientation) {
@@ -125,7 +127,7 @@ object ImageProcessor {
     }
 
     private fun applyColorMatrix(bitmap: Bitmap, matrix: ColorMatrix): Bitmap {
-        val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        val output = createBitmap(bitmap.width, bitmap.height)
         val canvas = Canvas(output)
         val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(matrix) }
         canvas.drawBitmap(bitmap, 0f, 0f, paint)

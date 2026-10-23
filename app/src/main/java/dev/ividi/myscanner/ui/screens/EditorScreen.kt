@@ -47,7 +47,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -72,9 +71,8 @@ fun EditorScreen(
     onDeletePage: () -> Unit
 ) {
     var isCropping by remember(page.id) { mutableStateOf(false) }
-    val preview = remember(page.editedPath, page.rotationDegrees, page.filter) {
-        ImageProcessor.loadDownsampledBitmap(page.editedPath)?.let { ImageProcessor.applyFilter(ImageProcessor.rotate(it, page.rotationDegrees), page.filter) }
-    }
+    val preview = rememberPageBitmap(page.editedPath, page.rotationDegrees, page.filter)
+    var confirmingDelete by remember(page.id) { mutableStateOf(false) }
     val hasExistingCrop = page.cropLeft > 0f || page.cropTop > 0f || page.cropRight < 1f || page.cropBottom < 1f
     var topLeft by remember(page.id) { mutableStateOf(Offset(page.cropLeft, page.cropTop)) }
     var bottomRight by remember(page.id) { mutableStateOf(Offset(page.cropRight, page.cropBottom)) }
@@ -117,7 +115,7 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onDeletePage) {
+                    IconButton(onClick = { confirmingDelete = true }) {
                         Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.editor_delete_page))
                     }
                 },
@@ -143,7 +141,7 @@ fun EditorScreen(
                     onTopLeftDrag = { delta -> topLeft = Offset((topLeft.x + delta.x).coerceIn(0f, bottomRight.x - 0.01f), (topLeft.y + delta.y).coerceIn(0f, bottomRight.y - 0.01f)) },
                     onBottomRightDrag = { delta -> bottomRight = Offset((bottomRight.x + delta.x).coerceIn(topLeft.x + 0.01f, 1f), (bottomRight.y + delta.y).coerceIn(topLeft.y + 0.01f, 1f)) }
                 ) else preview?.let {
-                    Image(bitmap = it.asImageBitmap(), contentDescription = stringResource(R.string.editor_title), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                    Image(bitmap = it, contentDescription = stringResource(R.string.editor_title), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 }
             }
 
@@ -251,6 +249,24 @@ fun EditorScreen(
             }
         }
     }
+
+    if (confirmingDelete) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text(stringResource(R.string.editor_delete_page_confirm_title)) },
+            text = { Text(stringResource(R.string.document_delete_confirm_body)) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmingDelete = false; onDeletePage() }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmingDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -263,7 +279,7 @@ private fun CropCanvas(
     onTopLeftDrag: (Offset) -> Unit,
     onBottomRightDrag: (Offset) -> Unit
 ) {
-    val bitmap = remember(imagePath) { ImageProcessor.loadDownsampledBitmap(imagePath) }
+    val bitmap = rememberPageBitmap(imagePath)
     val animatedTopLeftX by animateFloatAsState(topLeft.x, tween(220), label = "cropTopLeftX")
     val animatedTopLeftY by animateFloatAsState(topLeft.y, tween(220), label = "cropTopLeftY")
     val animatedBottomRightX by animateFloatAsState(bottomRight.x, tween(220), label = "cropBottomRightX")
@@ -285,7 +301,7 @@ private fun CropCanvas(
         Box(modifier = Modifier.size(with(density) { widthPx.toDp() }, with(density) { heightPx.toDp() })) {
             bitmap?.let {
                 Image(
-                    bitmap = it.asImageBitmap(),
+                    bitmap = it,
                     contentDescription = stringResource(R.string.editor_crop_grid_hint),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()

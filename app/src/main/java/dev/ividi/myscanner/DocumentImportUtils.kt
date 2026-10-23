@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.activity.ComponentActivity
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import dev.ividi.myscanner.pdf.PdfImporter
@@ -141,5 +142,5 @@ internal fun shareFiles(activity: ComponentActivity, files: List<java.io.File>, 
 }
 
 internal fun openUrl(activity: ComponentActivity, url: String) {
-    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    activity.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
 }

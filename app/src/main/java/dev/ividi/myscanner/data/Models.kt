@@ -27,6 +27,15 @@ data class ScanPage(
     val cropBottom: Float = 1f
 )
 
+/** Returns a copy with the page [pageId] moved by [delta] positions, clamped to the list bounds. */
+fun List<ScanPage>.movingPage(pageId: String, delta: Int): List<ScanPage> {
+    val from = indexOfFirst { it.id == pageId }
+    if (from < 0) return this
+    val to = (from + delta).coerceIn(0, lastIndex)
+    if (to == from) return this
+    return toMutableList().apply { add(to, removeAt(from)) }
+}
+
 /**
  * Distinguishes documents made up of editable scanned pages from documents that are just
  * a copy of an arbitrary file (e.g. a Word document) picked via "Browse Files", which has

@@ -34,8 +34,7 @@ object DocxExporter {
             index to text
         } } finally { textRecognizer.close() }
 
-        val exportsDir = File(context.cacheDir, "exports/${java.util.UUID.randomUUID()}").apply { mkdirs() }
-        val outFile = File(exportsDir, "${sanitize(document.name)}.docx")
+        val outFile = File(ExportFiles.newDirectory(context), "${ExportFiles.safeName(document.name)}.docx")
         ZipOutputStream(FileOutputStream(outFile)).use { zip ->
             writeEntry(zip, "[Content_Types].xml", contentTypesXml())
             writeEntry(zip, "_rels/.rels", relsXml())
@@ -92,7 +91,4 @@ object DocxExporter {
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
-
-    private fun sanitize(name: String): String =
-        name.replace(Regex("[^A-Za-z0-9-_ ]"), "_").ifBlank { "document" }
 }

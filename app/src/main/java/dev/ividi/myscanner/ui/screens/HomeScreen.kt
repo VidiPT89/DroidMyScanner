@@ -52,6 +52,7 @@ import dev.ividi.myscanner.data.ScanDocument
 @Composable
 fun HomeScreen(
     documents: List<ScanDocument>,
+    allDocuments: List<ScanDocument>,
     folders: List<DocumentFolder>,
     selectedFolderId: String?,
     searchQuery: String,
@@ -117,9 +118,10 @@ fun HomeScreen(
                 singleLine = true
             )
 
+            // Counts come from the whole library, not the folder/search-filtered list.
             FolderChipRow(
                 folders = folders,
-                documents = documents,
+                documents = allDocuments,
                 selectedFolderId = selectedFolderId,
                 onSelectFolder = onSelectFolder,
                 onCreateFolderClick = { creatingFolder = true },
@@ -131,7 +133,8 @@ fun HomeScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(16.dp),
+                    // Extra bottom space so the floating "Add" button never covers the last row.
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize()

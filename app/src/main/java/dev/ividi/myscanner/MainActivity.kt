@@ -1,8 +1,9 @@
 package dev.ividi.myscanner
 
-import android.net.Uri
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import dev.ividi.myscanner.data.AppLanguage
 import dev.ividi.myscanner.data.AppThemeMode
 import dev.ividi.myscanner.data.LocaleManager
 import dev.ividi.myscanner.data.DocumentKind
@@ -49,15 +52,18 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: AppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        // Keep the splash up until preferences are read, otherwise returning users briefly
+        // see onboarding and the default language before their saved choices arrive.
+        installSplashScreen().setKeepOnScreenCondition { viewModel.onboardingDone.value == null }
         super.onCreate(savedInstanceState)
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val language by viewModel.language.collectAsState()
+            val onboardingDone by viewModel.onboardingDone.collectAsState()
 
             androidx.compose.runtime.LaunchedEffect(language) {
-                LocaleManager.apply(language)
+                language?.let(LocaleManager::apply)
             }
 
             val darkTheme = when (themeMode) {
@@ -66,17 +72,23 @@ class MainActivity : AppCompatActivity() {
                 AppThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
             }
 
+            androidx.compose.runtime.DisposableEffect(darkTheme) {
+                val transparent = android.graphics.Color.TRANSPARENT
+                val style = if (darkTheme) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose {}
+            }
+
             DroidMyScannerTheme(darkTheme = darkTheme) {
-                AppRoot(viewModel = viewModel, activity = this)
+                onboardingDone?.let { AppRoot(viewModel = viewModel, activity = this, onboardingDone = it) }
             }
         }
     }
 }
 
 @Composable
-private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
+private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity, onboardingDone: Boolean) {
     val navController = rememberNavController()
-    val onboardingDone by viewModel.onboardingDone.collectAsState()
     val documents by viewModel.documents.collectAsState()
     val extractedText by viewModel.extractedText.collectAsState()
     val scope = rememberCoroutineScope()
@@ -101,7 +113,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
 
     suspend fun importPickedPages(uris: List<String>, targetDoc: String?) {
         val localPaths = uris.map { uriString ->
-            copyUriToLocalFile(activity, Uri.parse(uriString), viewModel, targetDoc)
+            copyUriToLocalFile(activity, uriString.toUri(), viewModel, targetDoc)
         }.filterNotNull()
         if (localPaths.isEmpty()) return
 
@@ -228,7 +240,10 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
         }
     }
 
-    NavHost(navController = navController, startDestination = if (onboardingDone) Routes.HOME else Routes.ONBOARDING) {
+    // Fixed for the lifetime of this graph: finishing onboarding navigates to HOME itself,
+    // and swapping startDestination afterwards would rebuild the whole graph.
+    val startDestination = remember { if (onboardingDone) Routes.HOME else Routes.ONBOARDING }
+    NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(onFinished = {
                 viewModel.completeOnboarding()
@@ -245,6 +260,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
             val searchQuery by viewModel.searchQuery.collectAsState()
             HomeScreen(
                 documents = filteredDocuments,
+                allDocuments = documents,
                 folders = folders,
                 selectedFolderId = selectedFolderId,
                 searchQuery = searchQuery,
@@ -288,6 +304,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
                     onPageClick = { page -> navController.navigate(Routes.editor(docId, page.id)) },
                     onAddPage = { launchScanner(docId) },
                     onExtractText = { page -> viewModel.extractTextFromPage(page) },
+                    onMovePage = { page, delta -> viewModel.movePage(docId, page.id, delta) },
                     onDismissExtractedText = { viewModel.clearExtractedText() },
                     onExportPdf = {
                         export {
@@ -354,7 +371,7 @@ private fun AppRoot(viewModel: AppViewModel, activity: AppCompatActivity) {
             val language by viewModel.language.collectAsState()
             SettingsScreen(
                 themeMode = themeMode,
-                language = language,
+                language = language ?: AppLanguage.ENGLISH,
                 onThemeModeChange = { viewModel.setThemeMode(it) },
                 onLanguageChange = { viewModel.setLanguage(it) },
                 onOpenAbout = { navController.navigate(Routes.ABOUT) },

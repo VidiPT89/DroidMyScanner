@@ -5,9 +5,7 @@ import androidx.compose.ui.graphics.Color
 // Brand palette approximated from ividi.dev: burnt orange, burnt amber and black.
 // Dark theme (default)
 val AccentOrange = Color(0xFFC1502E)      // burnt orange
-val AccentOrangeDim = Color(0xFF8F3A21)   // pressed / disabled state
 val AccentAmber = Color(0xFFD98E2B)       // burnt amber / yellow
-val AccentAmberDim = Color(0xFFA66C1F)
 val BackgroundBlack = Color(0xFF121212)
 val SurfaceBlack = Color(0xFF1C1C1C)
 val SurfaceBlackElevated = Color(0xFF262220)

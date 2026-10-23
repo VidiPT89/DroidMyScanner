@@ -25,7 +25,11 @@
     <string name="home_empty_title">No documents yet</string>
     <string name="home_empty_body">Tap the scan button to create your first document.</string>
     <string name="home_scan_fab">Scan</string>
-    <string name="document_pages_count">%1$d pages</string>
+    <plurals name="document_pages_count">
+        <item quantity="one">%1$d page</item>
+        <item quantity="other">%1$d pages</item>
+    </plurals>
+    <string name="document_options">Document options</string>
     <string name="document_rename">Rename</string>
     <string name="document_delete">Delete</string>
     <string name="document_delete_confirm_title">Delete document?</string>
@@ -70,6 +74,7 @@
     <string name="editor_rotate">Rotate</string>
     <string name="editor_filter">Filter</string>
     <string name="editor_delete_page">Delete page</string>
+    <string name="editor_delete_page_confirm_title">Delete page?</string>
     <string name="editor_done">Done</string>
     <string name="editor_reset_crop">Reset</string>
     <string name="editor_auto_crop">Auto-detect</string>
@@ -82,6 +87,8 @@
 
     <!-- Viewer / document detail -->
     <string name="viewer_extract_text">Extract text</string>
+    <string name="viewer_move_page_earlier">Move page earlier</string>
+    <string name="viewer_move_page_later">Move page later</string>
     <string name="viewer_export_pdf">Export as PDF</string>
     <string name="viewer_export_images">Export as images</string>
     <string name="viewer_export_word">Export as Word</string>

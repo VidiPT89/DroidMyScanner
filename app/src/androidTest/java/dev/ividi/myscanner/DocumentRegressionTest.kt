@@ -8,6 +8,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.ividi.myscanner.data.DocumentRepository
 import dev.ividi.myscanner.data.ScanDocument
 import dev.ividi.myscanner.data.ScanPage
+import dev.ividi.myscanner.data.movingPage
+import dev.ividi.myscanner.pdf.PdfExporter
 import dev.ividi.myscanner.scanner.ImageProcessor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -107,8 +109,8 @@ class DocumentRegressionTest {
         val bitmap = Bitmap.createBitmap(10, 20, Bitmap.Config.ARGB_8888)
         ImageProcessor.saveTo(bitmap, file)
         bitmap.recycle()
-        android.media.ExifInterface(file.path).apply {
-            setAttribute(android.media.ExifInterface.TAG_ORIENTATION, "6")
+        androidx.exifinterface.media.ExifInterface(file.path).apply {
+            setAttribute(androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, "6")
             saveAttributes()
         }
         val loaded = ImageProcessor.loadBitmap(file.path)!!
@@ -133,5 +135,63 @@ class DocumentRegressionTest {
         assertEquals(60, cropped.height)
         cropped.recycle()
         bitmap.recycle()
+    }
+
+    @Test fun startupRemovesOnlyOldUnreferencedFiles() = runBlocking {
+        val repository = DocumentRepository(context)
+        val kept = repository.newPageFile("doc").apply { writeText("page") }
+        repository.upsertDocument(ScanDocument("doc", "Doc", 0, pages = listOf(ScanPage("page", kept.path, kept.path))))
+        val dayAgo = System.currentTimeMillis() - 25 * 60 * 60 * 1000L
+        val oldOrphan = repository.newPageFile("crashed").apply { writeText("orphan"); setLastModified(dayAgo) }
+        val freshOrphan = repository.newImportedFile("in-flight.pdf").apply { writeText("importing") }
+        kept.setLastModified(dayAgo)
+
+        DocumentRepository(context).load()
+
+        assertTrue(kept.exists())
+        assertFalse(oldOrphan.exists())
+        assertFalse(oldOrphan.parentFile!!.exists())
+        assertTrue(freshOrphan.exists())
+    }
+
+    @Test fun corruptIndexSkipsOrphanCleanup() = runBlocking {
+        File(root, "documents_index.json").writeText("invalid JSON")
+        val image = File(root, "scans/doc/page.jpg").apply { parentFile!!.mkdirs(); writeText("page") }
+        image.setLastModified(System.currentTimeMillis() - 25 * 60 * 60 * 1000L)
+        assertTrue(runCatching { DocumentRepository(context).load() }.isFailure)
+        assertTrue(image.exists())
+    }
+
+    @Test fun movingPageReordersAndClamps() {
+        val pages = listOf("a", "b", "c").map { ScanPage(it, it, it) }
+        assertEquals(listOf("b", "a", "c"), pages.movingPage("a", 1).map { it.id })
+        assertEquals(listOf("c", "a", "b"), pages.movingPage("c", -5).map { it.id })
+        assertSame(pages, pages.movingPage("a", -1))
+        assertSame(pages, pages.movingPage("missing", 1))
+    }
+
+    @Test fun pdfExportUsesA4WidthAndEmbedsSearchableText() = runBlocking {
+        val repository = DocumentRepository(context)
+        val file = repository.newPageFile("doc")
+        val bitmap = Bitmap.createBitmap(1240, 1754, Bitmap.Config.ARGB_8888).apply {
+            val canvas = android.graphics.Canvas(this)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 96f }
+            canvas.drawText("INVOICE 2026", 120f, 300f, paint)
+        }
+        ImageProcessor.saveTo(bitmap, file)
+        bitmap.recycle()
+        val document = ScanDocument("doc", "Fatura março", 0, pages = listOf(ScanPage("page", file.path, file.path)))
+
+        val pdf = PdfExporter.export(context, document)
+
+        assertEquals("Fatura março.pdf", pdf.name)
+        android.graphics.pdf.PdfRenderer(android.os.ParcelFileDescriptor.open(pdf, android.os.ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
+            renderer.openPage(0).use { page ->
+                assertEquals(595, page.width)
+                assertEquals(842, page.height)
+            }
+        }
+        assertTrue("PDF has no text layer", String(pdf.readBytes(), Charsets.ISO_8859_1).contains("/Font"))
     }
 }

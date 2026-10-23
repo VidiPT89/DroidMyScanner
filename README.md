@@ -10,8 +10,9 @@
 - ✅ On-device text recognition (OCR) with copy-to-clipboard
 - ✅ Manual crop with draggable corner handles, 90° rotation
 - ✅ Non-destructive filters: Original, Black & White, Grayscale, Auto Enhance
-- ✅ Page deletion within a document
-- ✅ Export to PDF or images, with the native share sheet
+- ✅ Reorder and delete pages within a document
+- ✅ Import photos and files: images, PDFs (one page per PDF page) and Word documents
+- ✅ Export to a searchable PDF (invisible OCR text layer, A4-width pages), images or Word, with the native share sheet
 - ✅ Document management: rename, delete, animated list
 - ✅ Dark mode (default), Light mode, or follow system, with in-app toggle
 - ✅ Full localization: Portuguese (Portugal) and English, switchable in-app
@@ -28,7 +29,7 @@
 | OCR | ML Kit Text Recognition |
 | Persistence | Jetpack DataStore |
 | PDF Export | `android.graphics.pdf.PdfDocument` |
-| Minimum SDK | 24 |
+| Minimum / Target SDK | 24 / 36 |
 
 ## 🚀 Quick Start
 
@@ -51,13 +52,15 @@
 1. Tap the scan button and capture your document — edges are detected automatically
 2. Edit each page: crop, rotate, or apply a filter
 3. Extract text from any page with the OCR action
-4. Export the finished document as a PDF or images, or share it directly
+4. Reorder pages if needed, then export the document as a searchable PDF, images or Word, or share it directly
 
 ## 🧪 Testing
 
+Requires JDK 17 or 21 (the JDK 25 bundled with recent Android Studio cannot run this Gradle version from the command line).
+
 ```bash
-./gradlew testDebugUnitTest lintDebug assembleDebug
-# With an emulator or device connected:
+./gradlew lintDebug assembleDebug
+# With an unlocked emulator or device connected (no lock-screen PIN):
 ./gradlew connectedDebugAndroidTest
 ```
 

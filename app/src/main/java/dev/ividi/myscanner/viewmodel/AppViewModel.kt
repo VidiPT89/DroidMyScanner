@@ -13,6 +13,7 @@ import dev.ividi.myscanner.data.PageFilter
 import dev.ividi.myscanner.data.ScanDocument
 import dev.ividi.myscanner.data.ScanPage
 import dev.ividi.myscanner.data.UserPreferences
+import dev.ividi.myscanner.data.movingPage
 import dev.ividi.myscanner.scanner.ImageProcessor
 import dev.ividi.myscanner.scanner.TextRecognizerClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,11 +68,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val themeMode: StateFlow<AppThemeMode> = preferences.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppThemeMode.DARK)
 
-    val language: StateFlow<AppLanguage> = preferences.language
-        .stateIn(viewModelScope, SharingStarted.Eagerly, AppLanguage.ENGLISH)
+    /** Null until DataStore has been read, so a saved choice is never overridden by a default. */
+    val language: StateFlow<AppLanguage?> = preferences.language
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val onboardingDone: StateFlow<Boolean> = preferences.onboardingDone
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** Null until DataStore has been read; the splash screen stays up until then. */
+    val onboardingDone: StateFlow<Boolean?> = preferences.onboardingDone
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _extractedText = MutableStateFlow<String?>(null)
     val extractedText: StateFlow<String?> = _extractedText
@@ -216,6 +219,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePage(documentId: String, pageId: String) {
         viewModelScope.launch(errorHandler) {
             repository.updateDocument(documentId) { doc -> doc.copy(pages = doc.pages.filterNot { it.id == pageId }) }
+        }
+    }
+
+    /** Moves a page by [delta] positions (negative = earlier), clamped to the document bounds. */
+    fun movePage(documentId: String, pageId: String, delta: Int) {
+        viewModelScope.launch(errorHandler) {
+            repository.updateDocument(documentId) { doc -> doc.copy(pages = doc.pages.movingPage(pageId, delta)) }
         }
     }
 

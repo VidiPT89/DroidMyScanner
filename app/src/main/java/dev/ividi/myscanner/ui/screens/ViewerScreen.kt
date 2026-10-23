@@ -12,9 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
@@ -48,7 +53,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -66,6 +70,7 @@ fun ViewerScreen(
     onPageClick: (ScanPage) -> Unit,
     onAddPage: () -> Unit,
     onExtractText: (ScanPage) -> Unit,
+    onMovePage: (ScanPage, Int) -> Unit,
     onDismissExtractedText: () -> Unit,
     onExportPdf: () -> Unit,
     onExportImages: () -> Unit,
@@ -124,21 +129,30 @@ fun ViewerScreen(
                 }
             }
             TagsSection(tags = document.tags, onAddTag = onAddTag, onRemoveTag = onRemoveTag)
-            LazyRow(
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // A grid rather than a row: in a LazyRow each thumbnail took the full screen
+            // height (aspectRatio against an unbounded width) and pushed its buttons off-screen.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                items(document.pages, key = { it.id }) { page ->
+                itemsIndexed(document.pages, key = { _, page -> page.id }) { index, page ->
                     PageThumbnail(
                         page = page,
+                        canMoveEarlier = index > 0,
+                        canMoveLater = index < document.pages.lastIndex,
+                        modifier = Modifier.animateItem(),
                         onClick = { onPageClick(page) },
-                        onExtractText = { onExtractText(page) }
+                        onExtractText = { onExtractText(page) },
+                        onMove = { delta -> onMovePage(page, delta) }
                     )
                 }
                 item {
                     Card(
                         onClick = onAddPage,
-                        modifier = Modifier.aspectRatio(0.7f),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
@@ -180,24 +194,28 @@ fun ViewerScreen(
 }
 
 @Composable
-private fun PageThumbnail(page: ScanPage, onClick: () -> Unit, onExtractText: () -> Unit) {
-    val bitmap = remember(page.editedPath, page.rotationDegrees, page.filter) {
-        dev.ividi.myscanner.scanner.ImageProcessor.loadDownsampledBitmap(page.editedPath, maxDimension = 600)?.let {
-            dev.ividi.myscanner.scanner.ImageProcessor.applyFilter(
-                dev.ividi.myscanner.scanner.ImageProcessor.rotate(it, page.rotationDegrees), page.filter)
-        }
-    }
-    Column {
+private fun PageThumbnail(
+    page: ScanPage,
+    canMoveEarlier: Boolean,
+    canMoveLater: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onExtractText: () -> Unit,
+    onMove: (Int) -> Unit
+) {
+    val bitmap = rememberPageBitmap(page.editedPath, page.rotationDegrees, page.filter, maxDimension = 600)
+    Column(modifier = modifier) {
         Card(
             onClick = onClick,
             modifier = Modifier
+                .fillMaxWidth()
                 .aspectRatio(0.7f)
                 .clip(RoundedCornerShape(12.dp)),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             bitmap?.let {
                 Image(
-                    bitmap = it.asImageBitmap(),
+                    bitmap = it,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -205,12 +223,18 @@ private fun PageThumbnail(page: ScanPage, onClick: () -> Unit, onExtractText: ()
             }
         }
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+            IconButton(onClick = { onMove(-1) }, enabled = canMoveEarlier) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(R.string.viewer_move_page_earlier))
+            }
             IconButton(onClick = onExtractText) {
                 Icon(
                     Icons.Default.TextFields,
                     contentDescription = stringResource(R.string.viewer_extract_text),
                     tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            IconButton(onClick = { onMove(1) }, enabled = canMoveLater) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.viewer_move_page_later))
             }
         }
     }

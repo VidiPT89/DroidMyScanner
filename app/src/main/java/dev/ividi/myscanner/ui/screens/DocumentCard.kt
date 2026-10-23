@@ -4,6 +4,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +76,7 @@ fun DocumentCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            DocumentPreview(document = document, isImportedFile = isImportedFile)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -92,7 +102,7 @@ fun DocumentCard(
                         )
                     } else {
                         Text(
-                            text = stringResource(R.string.document_pages_count, document.pageCount),
+                            text = pluralStringResource(R.plurals.document_pages_count, document.pageCount, document.pageCount),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -100,7 +110,7 @@ fun DocumentCard(
                 }
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = null)
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.document_options))
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                         DropdownMenuItem(
@@ -150,6 +160,41 @@ fun DocumentCard(
             onPick = { folderId -> onAssignFolder(folderId); pickingFolder = false },
             onDismiss = { pickingFolder = false }
         )
+    }
+}
+
+@Composable
+private fun DocumentPreview(document: ScanDocument, isImportedFile: Boolean) {
+    val firstPage = document.pages.firstOrNull()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        val bitmap = firstPage?.let {
+            rememberPageBitmap(it.editedPath, it.rotationDegrees, it.filter, maxDimension = 400)
+        }
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                // Documents are read top-down, so show the top of the first page.
+                alignment = Alignment.TopCenter,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (isImportedFile || firstPage == null) {
+            Icon(
+                Icons.Default.Description,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(40.dp)
+            )
+        }
     }
 }
 

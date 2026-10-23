@@ -21,6 +21,10 @@ import java.util.UUID
  */
 class DocumentRepository(private val context: Context) {
 
+    private companion object {
+        const val ORPHAN_MIN_AGE_MILLIS = 24 * 60 * 60 * 1000L
+    }
+
     private val scansDir: File by lazy {
         File(context.filesDir, "scans").apply { mkdirs() }
     }
@@ -66,6 +70,27 @@ class DocumentRepository(private val context: Context) {
         _documents.value = docs.sortedByDescending { it.createdAtMillis }
         _folders.value = folders
         loaded = true
+        removeOrphanedFiles(docs)
+    }
+
+    /**
+     * Deletes page images and imported files no document references, e.g. left behind by a
+     * crash between copying a file and saving the index. Runs once, only after the index was
+     * read successfully (a corrupt index throws above), and only touches files older than a
+     * day, so a file an import is writing right now is never removed.
+     */
+    private fun removeOrphanedFiles(documents: List<ScanDocument>) {
+        val referenced = documents.flatMap { it.filePaths() }.map { File(it).canonicalPath }.toSet()
+        val cutoff = System.currentTimeMillis() - ORPHAN_MIN_AGE_MILLIS
+        listOf(scansDir, importsDir).forEach { dir ->
+            dir.walkBottomUp().forEach { file ->
+                when {
+                    file == dir -> Unit
+                    file.isDirectory -> if (file.list().isNullOrEmpty()) file.delete()
+                    file.canonicalPath !in referenced && file.lastModified() < cutoff -> file.delete()
+                }
+            }
+        }
     }
 
     fun newPageFile(documentId: String, extension: String = "jpg"): File =
